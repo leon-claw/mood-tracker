@@ -35,7 +35,6 @@ import {
   Search,
   ChevronDown,
   Trash2,
-  Award,
   Moon,
   Smile,
   Database,
@@ -400,17 +399,6 @@ export default function App() {
         type: 'error',
         message: error instanceof Error ? error.message : '导入失败，请检查 JSON 文件。',
       });
-    }
-  };
-
-  const handleTogglePremium = async () => {
-    const nextPremium = !isPremiumUnlocked;
-    setIsPremiumUnlocked(nextPremium);
-    try {
-      await syncUserState(points, unlockedItems, nextPremium);
-    } catch (error) {
-      setIsPremiumUnlocked(!nextPremium);
-      setDataStatus('error', error instanceof Error ? error.message : '同步专业版状态失败。');
     }
   };
 
@@ -838,63 +826,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Gamified unlocked Virtual Plant Shelf Display */}
-              <div className="bg-white border border-[#F2EDE9] rounded-3xl p-5 shadow-xs">
-                <h3 className="font-semibold text-[#4A4540] text-sm flex items-center gap-1.5 mb-3">
-                  <Award size={16} className="text-[#D48166]" />
-                  <span>我的疗愈植物架</span>
-                </h3>
-                
-                {/* Virtual Shelf layout */}
-                <div className="bg-[#FAF0ED]/40 border border-[#F2EDE9] rounded-2xl p-4 min-h-[100px] flex flex-col justify-between relative">
-                  {/* Row of plants */}
-                  <div className="flex justify-around items-end z-10 min-h-[50px] pb-1">
-                    {unlockedItems.filter(id => id.startsWith('plant_')).map((id) => {
-                      const label = id === 'plant_succulent' ? '🪴' : id === 'plant_cactus' ? '🌵' : '🌻';
-                      return (
-                        <div key={id} className="flex flex-col items-center group relative cursor-pointer transform hover:-translate-y-1 transition-transform">
-                          <span className="text-4xl filter drop-shadow-sm">{label}</span>
-                          <span className="absolute -bottom-6 bg-gray-800 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                            {id === 'plant_succulent' ? '多肉' : id === 'plant_cactus' ? '仙人掌' : '向日葵'}
-                          </span>
-                        </div>
-                      );
-                    })}
-
-                    {unlockedItems.filter(id => id.startsWith('plant_')).length === 0 && (
-                      <span className="text-xs text-gray-300 italic py-3">植物架空空如也，继续记录会慢慢长出新绿。</span>
-                    )}
-                  </div>
-                  
-                  {/* Wooden Shelf representation line */}
-                  <div className="w-full h-2.5 bg-amber-800/60 rounded-full shadow-inner mt-2"></div>
-                </div>
-              </div>
-
-              {/* Premium toggle option inside user profile */}
-              <div className="bg-zinc-900 text-zinc-100 rounded-3xl p-5 shadow-lg relative overflow-hidden">
-                <div className="absolute right-4 -bottom-6 opacity-10 text-9xl">👑</div>
-                <div className="flex justify-between items-start relative z-10">
-                  <div>
-                    <span className="text-[10px] bg-amber-500 text-zinc-950 px-2 py-0.5 rounded-full font-bold">PREMIUM</span>
-                    <h3 className="text-base font-bold mt-2">专业版健康管理</h3>
-                    <p className="text-xs text-zinc-400 mt-1 max-w-[200px] leading-normal">
-                      开启专业版的全部精细运动趋势图标、睡眠环境健康洞察以及AI陪伴分析。
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleTogglePremium}
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                      isPremiumUnlocked
-                        ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-                        : 'bg-gradient-to-r from-amber-400 to-amber-500 text-zinc-900 hover:brightness-105 shadow-md shadow-amber-500/20'
-                    }`}
-                  >
-                    {isPremiumUnlocked ? '已开启' : '免费开启'}
-                  </button>
-                </div>
-              </div>
-
               {/* Data backup disclaimer */}
               <div className="bg-white border border-[#F2EDE9] rounded-3xl p-5 shadow-xs flex flex-col gap-4">
                 <div className="flex items-start justify-between gap-3">
@@ -998,14 +929,14 @@ export default function App() {
           </button>
 
           {/* Central floating smiley Action Button */}
-          <div className="relative -top-4">
-            <div className="absolute inset-0 bg-[#F9F8F6] w-[72px] h-[72px] -top-3 left-1/2 -translate-x-1/2 rounded-full border-t border-[#F2EDE9]"></div>
+          <div className="relative w-[76px] h-20 flex items-start justify-center">
+            <div className="absolute top-[-18px] left-1/2 -translate-x-1/2 bg-[#F9F8F6] w-[76px] h-[76px] rounded-full border-t border-[#F2EDE9]"></div>
             <button
               onClick={() => {
                 setCalendarEditorDate(null);
                 setIsLogModalOpen(true);
               }}
-              className="relative -top-2.5 bg-[#8FA88B] text-white hover:bg-[#7D9779] hover:scale-105 active:scale-95 transition-all w-14 h-14 rounded-full flex flex-col items-center justify-center shadow-md border-2 border-white select-none cursor-pointer z-10"
+              className="absolute top-[-10px] left-1/2 -translate-x-1/2 bg-[#8FA88B] text-white hover:bg-[#7D9779] hover:scale-105 active:scale-95 transition-all w-14 h-14 rounded-full flex flex-col items-center justify-center shadow-md border-2 border-white select-none cursor-pointer z-10"
               title="记录今天指标"
             >
               <Plus size={20} strokeWidth={3} className="text-white" />
