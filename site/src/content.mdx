@@ -1,0 +1,100 @@
+---
+title: "Mood Tracker"
+
+hero_title_left: "记录"
+hero_title_accent: "心情与睡眠"
+hero_title_right: "看见自己的节律"
+hero_subtitle: "Mood Tracker 把每天的心情、睡眠质量、活动、天气和随笔放在同一份温和的日志里。先从本地记录开始，需要时再开启云端同步。"
+hero_cta_primary: "打开 Web 应用"
+hero_cta_secondary: "查看 Android 版本"
+
+value_sec_badge: "本地优先 · Local First"
+value_sec_title: "不用注册，也能从今天开始记录"
+value_sec_desc: "Mood Tracker 默认把数据保存在当前设备中。账号、后端和云端同步是可选能力，不会挡在第一次记录之前。"
+
+values_list:
+  - id: "01"
+    title: "本地优先"
+    desc: "未登录时记录保存在浏览器或 Android 本地环境里。你可以先建立习惯，再决定是否开启账号。"
+  - id: "02"
+    title: "记录结构清楚"
+    desc: "核心字段分为量表、枚举和文本。睡眠、心情、活动、天气、社交和成就各有自己的位置。"
+  - id: "03"
+    title: "趋势来自真实数据"
+    desc: "趋势页读取真实记录，展示心情流、心情分布，以及睡眠质量和心情之间的关系。"
+  - id: "04"
+    title: "数据不被锁住"
+    desc: "支持 JSON 导入导出。登录时也会让你在本地数据和云端数据之间明确选择一处保留。"
+
+method_sec_badge: "记录模板 · Log Schema"
+method_sec_title: "用三种字段描述一天"
+method_sec_desc: "心情记录不需要变成复杂问卷。Mood Tracker 用少量可扩展字段，把稳定的量表、可选的枚举和自由文本分开。"
+
+field_groups:
+  - id: "scale"
+    title: "量表"
+    desc: "1 到 10 分，适合稳定追踪的状态。"
+    examples: ["睡眠质量", "心情等级", "精力", "饮食健康", "工作效率"]
+  - id: "enum"
+    title: "枚举"
+    desc: "点选当天发生的事情，保留后续扩展空间。"
+    examples: ["跑步", "徒步", "游泳", "晴朗", "派对"]
+  - id: "text"
+    title: "文本"
+    desc: "留给无法被量化的细节和个人语气。"
+    examples: ["随笔日志", "成就"]
+
+workflow_sec_badge: "从记录到回看 · Workflow"
+workflow_sec_title: "每天一分钟，月底看见线索"
+workflow_sec_desc: "这个应用的节奏很简单：记录当天，查看趋势，用日历回看，再用导出或云端同步保管数据。"
+
+workflow_steps:
+  - step: "01"
+    title: "记录当天"
+    desc: "填写睡眠、心情和日常活动"
+    subText: "点击中间的加号，或从日历选择某一天。新建和编辑使用同一个记录表单。"
+  - step: "02"
+    title: "查看趋势"
+    desc: "让图表只服务于洞察"
+    subText: "趋势页包含心情流、心情分布、睡眠质量与心情关系，不使用无关的装饰数据。"
+  - step: "03"
+    title: "日历回看"
+    desc: "按月查看哪天有记录"
+    subText: "日历只保留月视图，点击日期即可回到那一天的记录编辑。"
+  - step: "04"
+    title: "管理数据"
+    desc: "本地、导出和云端三种方式"
+    subText: "我的页面提供 JSON 导入导出。配置后端后，可以登录并选择使用本地数据或云端数据。"
+
+installer_sec_badge: "使用入口 · Platforms"
+installer_sec_title: "先做 Web 和 Android"
+installer_sec_desc: "当前项目聚焦 Web 应用与 Capacitor Android 包装。实际线上地址和安装包地址可以在发布后补充。"
+
+platforms_list:
+  - name: "Web 应用"
+    badge: "Coming Soon"
+    desc: "浏览器中直接记录，适合桌面查看趋势和整理数据。"
+    action: "地址待补充"
+  - name: "Android APK"
+    badge: "Coming Soon"
+    desc: "使用 Capacitor 包装同一套体验，默认本地优先，可按构建配置开启云端账号。"
+    action: "下载地址待补充"
+  - name: "私有化后端"
+    badge: "可自建"
+    desc: "Node.js、Express、Prisma 和 PostgreSQL，用于账号、同步、导入导出和会话。"
+    action: "部署说明待补充"
+
+trust_sec_badge: "数据与边界 · Data"
+trust_sec_title: "记录属于你，不属于某个入口"
+trust_sec_desc: "Mood Tracker 的数据设计围绕可迁移和可恢复展开。默认本地，支持 JSON，登录后也避免本地和云端两套数据互相覆盖。"
+
+trust_list:
+  - title: "本地模式不强制登录"
+    desc: "没有账号也能完整记录。数据保存在当前设备，适合先试用和建立习惯。"
+  - title: "JSON 导入导出"
+    desc: "导出文件包含 entries、积分状态和解锁状态。导入时会校验字段并规范化数据。"
+  - title: "云端同步可选"
+    desc: "配置 API 地址后显示账号入口，支持邮箱密码登录、图形验证码注册和修改密码。"
+  - title: "登录时明确选择数据源"
+    desc: "如果本地已有数据，登录后会提示使用本地覆盖云端，或使用云端并清空本地。"
+---
