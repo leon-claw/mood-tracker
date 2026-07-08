@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mood-tracker-postgres
+    environment:
+      POSTGRES_DB: mood_tracker
+      POSTGRES_USER: mood_tracker
+      POSTGRES_PASSWORD: mood_tracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - mood_tracker_postgres:/var/lib/postgresql/data
+
+volumes:
+  mood_tracker_postgres:

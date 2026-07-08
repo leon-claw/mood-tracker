@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mood Tracker Style"
+  short_description: "Project-level visual style guide for Mood Tracker"
+  default_prompt: "Use $mood-tracker-style to design a new mood tracker screen or component in this project's established visual style."

@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+const authDialogSource = readFileSync(new URL('./AuthDialog.tsx', import.meta.url), 'utf8');
+const sourceChoiceSource = readFileSync(new URL('./DataSourceChoiceDialog.tsx', import.meta.url), 'utf8');
+const cloudStoreSource = readFileSync(new URL('../cloudDataStore.ts', import.meta.url), 'utf8');
+const viteConfigSource = readFileSync(new URL('../../vite.config.ts', import.meta.url), 'utf8');
+
+assert.match(authDialogSource, /登录/);
+assert.match(authDialogSource, /注册/);
+assert.match(authDialogSource, /图形验证码/);
+assert.match(authDialogSource, /修改密码/);
+assert.match(authDialogSource, /changePassword/);
+
+assert.match(sourceChoiceSource, /使用本地数据/);
+assert.match(sourceChoiceSource, /使用云端数据/);
+assert.match(sourceChoiceSource, /覆盖云端/);
+assert.match(sourceChoiceSource, /清空本地/);
+
+assert.match(appSource, /DataMode/);
+assert.match(appSource, /createCloudDataStore/);
+assert.match(appSource, /hasLocalBusinessData/);
+assert.match(appSource, /DataSourceChoiceDialog/);
+assert.match(appSource, /AuthDialog/);
+assert.match(appSource, /handleUseLocalData/);
+assert.match(appSource, /handleUseCloudData/);
+assert.match(appSource, /handleLogout/);
+assert.match(appSource, /cloudStore\.upsertEntry/);
+assert.match(appSource, /cloudStore\.deleteEntry/);
+assert.match(appSource, /cloudStore\.replaceData/);
+assert.match(appSource, /云端同步/);
+assert.match(appSource, /本地模式/);
+
+assert.match(cloudStoreSource, /credentials: 'include'/);
+assert.match(viteConfigSource, /proxy/);
+assert.match(viteConfigSource, /localhost:4000/);
+
+console.log('auth cloud UI source tests passed');

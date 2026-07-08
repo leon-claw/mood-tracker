@@ -1,0 +1,6 @@
+{
+  "name": "Mood & Sleep Tracker",
+  "description": "A beautiful mobile-first web application to track daily mood, sleep, steps, and habits with detailed visualization charts, styled in a warm sage-green theme.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

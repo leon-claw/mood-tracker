@@ -1,0 +1,32 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="treeShadow" x="104" y="96" width="816" height="820" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="26" flood-color="#4A4540" flood-opacity="0.18"/>
+    </filter>
+    <linearGradient id="canopy" x1="276" y1="168" x2="734" y2="658" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFDF9"/>
+      <stop offset="1" stop-color="#E6D5B8"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="228" fill="#8FA88B"/>
+
+  <g filter="url(#treeShadow)">
+    <path
+      d="M512 160C420 160 344 222 324 306C258 329 212 391 212 464C212 557 287 632 380 632H644C737 632 812 557 812 464C812 391 766 329 700 306C680 222 604 160 512 160Z"
+      fill="url(#canopy)"
+    />
+    <path
+      d="M512 508V748"
+      stroke="#7A5A48"
+      stroke-width="104"
+      stroke-linecap="round"
+    />
+    <path
+      d="M382 760H642"
+      stroke="#FFFDF9"
+      stroke-width="76"
+      stroke-linecap="round"
+    />
+  </g>
+</svg>

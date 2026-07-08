@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter-v20.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --font-display: "Inter", sans-serif;
+  
+  --color-natural-bg: #EAE7E2;
+  --color-natural-phone: #F9F8F6;
+  --color-natural-sage: #8FA88B;
+  --color-natural-cream: #E6D5B8;
+  --color-natural-terracotta: #D48166;
+  --color-natural-border: #F2EDE9;
+  --color-natural-text: #4A4540;
+}
+
+/* Custom scrollbar hiding utilities */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Base body styling with nice background and font */
+body {
+  font-family: var(--font-sans);
+  background-color: #EAE7E2;
+  color: #4A4540;
+  margin: 0;
+  padding: 0;
+}
