@@ -16,8 +16,8 @@ import {
 } from 'lucide-react';
 import { siteContent } from './content';
 
-const webAppUrl = '';
-const androidDownloadUrl = '';
+const webAppUrl = 'https://mood-tracker.jianghong.site/app/';
+const androidDownloadUrl = 'https://github.com/leon-claw/mood-tracker/releases';
 
 const scrollToSection = (id: string) => {
   const element = document.getElementById(id);
@@ -45,10 +45,6 @@ const SectionHeading = ({
     <p>{desc}</p>
   </div>
 );
-
-const openOptionalUrl = (url: string) => {
-  if (url) window.location.href = url;
-};
 
 const ProductPreview = () => (
   <div className="product-preview" aria-label="Mood Tracker product preview">
@@ -128,14 +124,14 @@ const Hero = () => (
         </h1>
         <p>{siteContent.hero.subtitle}</p>
         <div className="hero-actions">
-          <button className="primary-button" onClick={() => openOptionalUrl(webAppUrl)} disabled={!webAppUrl}>
+          <a className="primary-button" href={webAppUrl}>
             {siteContent.hero.primary}
             <ArrowRight size={18} />
-          </button>
-          <button className="secondary-button" onClick={() => scrollToSection('platforms')}>
+          </a>
+          <a className="secondary-button" href={androidDownloadUrl}>
             {siteContent.hero.secondary}
             <Download size={18} />
-          </button>
+          </a>
         </div>
         <div className="hero-note">
           <ShieldCheck size={16} />
@@ -243,12 +239,9 @@ const Platforms = () => (
               <span>{item.badge}</span>
             </div>
             <p>{item.desc}</p>
-            <button
-              disabled={index !== 0 || !webAppUrl}
-              onClick={() => (index === 0 ? openOptionalUrl(webAppUrl) : openOptionalUrl(androidDownloadUrl))}
-            >
-              {item.action}
-            </button>
+            {index === 0 && <a href={webAppUrl}>{item.action}</a>}
+            {index === 1 && <a href={androidDownloadUrl}>{item.action}</a>}
+            {index === 2 && <button disabled>{item.action}</button>}
           </article>
         ))}
       </div>
