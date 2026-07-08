@@ -26,6 +26,10 @@ export interface CloudDataStore {
   updateUserState(state: Pick<AppExportData, 'points' | 'unlockedItems' | 'isPremiumUnlocked'>): Promise<void>;
 }
 
+export interface CloudDataStoreOptions {
+  apiBaseUrl?: string;
+}
+
 const parseJson = async <Result>(response: Response): Promise<Result> => {
   const body = await response.json().catch(() => ({}));
 
@@ -37,9 +41,17 @@ const parseJson = async <Result>(response: Response): Promise<Result> => {
   return body as Result;
 };
 
-export const createCloudDataStore = (fetcher: typeof fetch = fetch): CloudDataStore => {
+const normalizeApiBaseUrl = (apiBaseUrl?: string) => (apiBaseUrl || '').trim().replace(/\/+$/, '');
+
+export const createCloudDataStore = (
+  fetcher: typeof fetch = fetch,
+  options: CloudDataStoreOptions = {}
+): CloudDataStore => {
+  const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
+  const withApiBase = (path: string) => `${apiBaseUrl}${path}`;
+
   const request = async <Result>(path: string, init: RequestInit = {}) => {
-    const response = await fetcher(path, {
+    const response = await fetcher(withApiBase(path), {
       ...init,
       credentials: 'include',
     });

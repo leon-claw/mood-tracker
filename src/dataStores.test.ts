@@ -87,16 +87,16 @@ assert.equal(localStorage.getItem('mood_tracker_entries_v4'), null);
 const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
 const fetcher: typeof fetch = async (input, init) => {
   calls.push({ input, init });
-  if (String(input) === '/api/captcha') {
+  if (String(input).endsWith('/api/captcha')) {
     return new Response(JSON.stringify({ captchaId: 'captcha-1', svg: '<svg></svg>', expiresAt: '2026-07-08T00:00:00.000Z' }));
   }
-  if (String(input) === '/api/auth/login') {
+  if (String(input).endsWith('/api/auth/login')) {
     return new Response(JSON.stringify({ user: { id: 'user-1', email: 'a@example.com' } }));
   }
-  if (String(input) === '/api/sync') {
+  if (String(input).endsWith('/api/sync')) {
     return new Response(JSON.stringify(data));
   }
-  if (String(input) === '/api/entries') {
+  if (String(input).endsWith('/api/entries')) {
     return new Response(JSON.stringify({ entry: data.entries[0] }));
   }
   return new Response(JSON.stringify({ ok: true }));
@@ -130,5 +130,17 @@ assert.deepEqual(
 assert.equal(calls[1].init?.headers && (calls[1].init.headers as Record<string, string>)['Content-Type'], 'application/json');
 assert.equal(JSON.parse(String(calls[1].init?.body)).email, 'A@EXAMPLE.COM');
 assert.equal(JSON.parse(String(calls[2].init?.body)).entries[0].id, 'entry-1');
+
+calls.length = 0;
+const configuredCloud = createCloudDataStore(fetcher, { apiBaseUrl: 'https://api.example.com///' });
+await configuredCloud.getCaptcha();
+await configuredCloud.login('A@EXAMPLE.COM', 'password123');
+assert.deepEqual(
+  calls.map((call) => String(call.input)),
+  [
+    'https://api.example.com/api/captcha',
+    'https://api.example.com/api/auth/login',
+  ]
+);
 
 console.log('data store tests passed');

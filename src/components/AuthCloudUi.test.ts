@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const authDialogSource = readFileSync(new URL('./AuthDialog.tsx', import.meta.url), 'utf8');
 const sourceChoiceSource = readFileSync(new URL('./DataSourceChoiceDialog.tsx', import.meta.url), 'utf8');
+const updatePromptSource = readFileSync(new URL('./UpdatePrompt.tsx', import.meta.url), 'utf8');
 const cloudStoreSource = readFileSync(new URL('../cloudDataStore.ts', import.meta.url), 'utf8');
 const viteConfigSource = readFileSync(new URL('../../vite.config.ts', import.meta.url), 'utf8');
 
@@ -18,11 +19,23 @@ assert.match(sourceChoiceSource, /使用云端数据/);
 assert.match(sourceChoiceSource, /覆盖云端/);
 assert.match(sourceChoiceSource, /清空本地/);
 
+assert.match(updatePromptSource, /下载新版/);
+assert.match(updatePromptSource, /稍后再说/);
+assert.match(updatePromptSource, /版本更新/);
+
 assert.match(appSource, /DataMode/);
+assert.match(appSource, /appConfig\.showCloudAccount/);
+assert.match(appSource, /UpdatePrompt/);
+assert.match(appSource, /appConfig\.updateManifestUrl/);
+assert.match(appSource, /fetchUpdateManifest/);
+assert.match(appSource, /isVersionNewer/);
 assert.match(appSource, /createCloudDataStore/);
+assert.match(appSource, /createCloudDataStore\(fetch,\s*\{\s*apiBaseUrl: appConfig\.apiBaseUrl\s*\}\)/);
 assert.match(appSource, /hasLocalBusinessData/);
 assert.match(appSource, /DataSourceChoiceDialog/);
 assert.match(appSource, /AuthDialog/);
+assert.match(appSource, /if \(!showCloudAccount\) return/);
+assert.match(appSource, /showCloudAccount && \(/);
 assert.match(appSource, /handleUseLocalData/);
 assert.match(appSource, /handleUseCloudData/);
 assert.match(appSource, /handleLogout/);

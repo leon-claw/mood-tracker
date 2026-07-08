@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mood Tracker</string>
+    <string name="title_activity_main">Mood Tracker</string>
+    <string name="package_name">com.moodtracker.app</string>
+    <string name="custom_url_scheme">com.moodtracker.app</string>
+</resources>

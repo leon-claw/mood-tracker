@@ -10,6 +10,7 @@ import { PageTransition } from './components/PageTransition';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { AuthDialog, AuthDialogMode } from './components/AuthDialog';
 import { DataSourceChoiceDialog } from './components/DataSourceChoiceDialog';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import { AppTab, getHashForTab, getTabFromHash } from './routes';
 import { getActivityOption } from './fieldSchema';
 import { createExportJson, parseImportJson } from './dataPortability';
@@ -21,6 +22,9 @@ import {
   writeLocalAppData,
 } from './localDataStore';
 import { AuthUser, createCloudDataStore } from './cloudDataStore';
+import { appConfig } from './appConfig';
+import { fetchUpdateManifest, isVersionNewer, UpdateManifest } from './updateCheck';
+import { exportJsonFile } from './androidExport';
 
 import {
   Calendar,
@@ -48,7 +52,7 @@ import {
 
 type DataMode = 'local' | 'cloud';
 
-const cloudStore = createCloudDataStore();
+const cloudStore = createCloudDataStore(fetch, { apiBaseUrl: appConfig.apiBaseUrl });
 
 const applyAppData = (
   data: ReturnType<typeof readLocalAppData>,
@@ -77,6 +81,8 @@ export default function App() {
   const [authDialogMode, setAuthDialogMode] = useState<AuthDialogMode | null>(null);
   const [pendingSourceUser, setPendingSourceUser] = useState<AuthUser | null>(null);
   const [isSourceChoiceBusy, setIsSourceChoiceBusy] = useState(false);
+  const [updateManifest, setUpdateManifest] = useState<UpdateManifest | null>(null);
+  const showCloudAccount = appConfig.showCloudAccount;
 
   // Month and Year selector states
   const [selectedYear, setSelectedYear] = useState<number>(2026);
@@ -119,6 +125,7 @@ export default function App() {
     let isCancelled = false;
 
     const restoreSession = async () => {
+      if (!showCloudAccount) return;
       const user = await cloudStore.getMe();
       if (!user || isCancelled) return;
 
@@ -144,7 +151,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [showCloudAccount]);
 
   useEffect(() => {
     if (!window.location.hash) {
@@ -157,6 +164,24 @@ export default function App() {
 
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const checkForUpdates = async () => {
+      if (!appConfig.updateManifestUrl) return;
+      const manifest = await fetchUpdateManifest(appConfig.updateManifestUrl);
+      if (!manifest || isCancelled) return;
+      if (isVersionNewer(manifest.version, appConfig.appVersion)) {
+        setUpdateManifest(manifest);
+      }
+    };
+
+    void checkForUpdates();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -336,18 +361,20 @@ export default function App() {
     }
   };
 
-  const handleExportData = () => {
+  const handleExportData = async () => {
     const json = createExportJson(getCurrentAppData());
-    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `mood-tracker-export-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    setDataImportStatus({ type: 'success', message: '已导出 JSON 备份。' });
+    try {
+      await exportJsonFile({
+        json,
+        filename: `mood-tracker-export-${new Date().toISOString().slice(0, 10)}.json`,
+      });
+      setDataImportStatus({ type: 'success', message: '已导出 JSON 备份。' });
+    } catch (error) {
+      setDataImportStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : '导出失败，请稍后再试。',
+      });
+    }
   };
 
   const handleImportDataFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -725,70 +752,72 @@ export default function App() {
               </div>
 
               {/* Account and cloud sync controls */}
-              <div className="bg-white border border-[#F2EDE9] rounded-3xl p-5 shadow-xs flex flex-col gap-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-[#4A4540] text-sm flex items-center gap-1.5">
-                      <Cloud size={16} className="text-[#8FA88B]" />
-                      <span>账号与云端同步</span>
-                    </h3>
-                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                      {dataMode === 'cloud'
-                        ? '当前数据已保存在云端数据库，本地浏览器不再保留业务数据。'
-                        : '未登录时默认使用 localStorage，本地离线记录不会强制上传。'}
-                    </p>
+              {showCloudAccount && (
+                <div className="bg-white border border-[#F2EDE9] rounded-3xl p-5 shadow-xs flex flex-col gap-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-[#4A4540] text-sm flex items-center gap-1.5">
+                        <Cloud size={16} className="text-[#8FA88B]" />
+                        <span>账号与云端同步</span>
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                        {dataMode === 'cloud'
+                          ? '当前数据已保存在云端数据库，本地浏览器不再保留业务数据。'
+                          : '未登录时默认使用 localStorage，本地离线记录不会强制上传。'}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${
+                        dataMode === 'cloud'
+                          ? 'bg-[#E6F0E6] text-[#8FA88B]'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}
+                    >
+                      {dataMode === 'cloud' ? '云端同步' : '本地模式'}
+                    </span>
                   </div>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${
-                      dataMode === 'cloud'
-                        ? 'bg-[#E6F0E6] text-[#8FA88B]'
-                        : 'bg-gray-100 text-gray-500'
-                    }`}
-                  >
-                    {dataMode === 'cloud' ? '云端同步' : '本地模式'}
-                  </span>
-                </div>
 
-                {authUser ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setAuthDialogMode('password')}
-                      className="h-11 rounded-full bg-gray-50 hover:bg-[#E6F0E6]/50 border border-[#F2EDE9] text-[#4A4540] text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                    >
-                      <KeyRound size={15} className="text-[#8FA88B]" />
-                      <span>修改密码</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="h-11 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                    >
-                      <LogOut size={15} />
-                      <span>退出登录</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setAuthDialogMode('login')}
-                      className="h-11 rounded-full bg-[#8FA88B] hover:bg-[#7D9779] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
-                    >
-                      <LogIn size={15} />
-                      <span>登录</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAuthDialogMode('register')}
-                      className="h-11 rounded-full bg-gray-50 hover:bg-[#E6F0E6]/50 border border-[#F2EDE9] text-[#4A4540] text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                    >
-                      <UserPlus size={15} className="text-[#8FA88B]" />
-                      <span>注册</span>
-                    </button>
-                  </div>
-                )}
-              </div>
+                  {authUser ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAuthDialogMode('password')}
+                        className="h-11 rounded-full bg-gray-50 hover:bg-[#E6F0E6]/50 border border-[#F2EDE9] text-[#4A4540] text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                      >
+                        <KeyRound size={15} className="text-[#8FA88B]" />
+                        <span>修改密码</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="h-11 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                      >
+                        <LogOut size={15} />
+                        <span>退出登录</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAuthDialogMode('login')}
+                        className="h-11 rounded-full bg-[#8FA88B] hover:bg-[#7D9779] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                      >
+                        <LogIn size={15} />
+                        <span>登录</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAuthDialogMode('register')}
+                        className="h-11 rounded-full bg-gray-50 hover:bg-[#E6F0E6]/50 border border-[#F2EDE9] text-[#4A4540] text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                      >
+                        <UserPlus size={15} className="text-[#8FA88B]" />
+                        <span>注册</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Statistics Grid */}
               <div className="grid grid-cols-3 gap-3">
@@ -1026,7 +1055,7 @@ export default function App() {
           onConfirm={handleConfirmDelete}
         />
 
-        {authDialogMode && (
+        {showCloudAccount && authDialogMode && (
           <AuthDialog
             isOpen={Boolean(authDialogMode)}
             mode={authDialogMode}
@@ -1039,13 +1068,24 @@ export default function App() {
           />
         )}
 
-        <DataSourceChoiceDialog
-          isOpen={Boolean(pendingSourceUser)}
-          email={pendingSourceUser?.email}
-          isBusy={isSourceChoiceBusy}
-          onUseLocal={handleUseLocalData}
-          onUseCloud={handleUseCloudData}
-          onCancel={handleCancelSourceChoice}
+        {showCloudAccount && (
+          <DataSourceChoiceDialog
+            isOpen={Boolean(pendingSourceUser)}
+            email={pendingSourceUser?.email}
+            isBusy={isSourceChoiceBusy}
+            onUseLocal={handleUseLocalData}
+            onUseCloud={handleUseCloudData}
+            onCancel={handleCancelSourceChoice}
+          />
+        )}
+
+        <UpdatePrompt
+          manifest={updateManifest}
+          onDismiss={() => setUpdateManifest(null)}
+          onDownload={(apkUrl) => {
+            window.open(apkUrl, '_blank', 'noopener,noreferrer');
+            setUpdateManifest(null);
+          }}
         />
 
       </div>
