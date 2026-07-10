@@ -41,11 +41,14 @@ export const verifySessionToken = (token: string, secret: Secret): SessionUser |
   }
 };
 
+const isProduction = process.env.NODE_ENV === 'production';
+const sameSiteMode = isProduction ? 'none' : 'lax';
+
 export const setSessionCookie = (response: Response, token: string) => {
   response.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: sameSiteMode,
+    secure: isProduction,
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
@@ -54,8 +57,8 @@ export const setSessionCookie = (response: Response, token: string) => {
 export const clearSessionCookie = (response: Response) => {
   response.clearCookie(SESSION_COOKIE_NAME, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: sameSiteMode,
+    secure: isProduction,
     path: '/',
   });
 };

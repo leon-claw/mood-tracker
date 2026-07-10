@@ -6,7 +6,14 @@ assert.equal(defaultConfig.appVersion, '0.0.0');
 assert.equal(defaultConfig.updateManifestUrl, '');
 assert.equal(defaultConfig.apiBaseUrl, '');
 assert.equal(defaultConfig.isNativeAndroid, false);
-assert.equal(defaultConfig.showCloudAccount, false);
+assert.equal(defaultConfig.showCloudAccount, true);
+
+const productionConfig = createAppConfig({
+  PROD: true,
+});
+
+assert.equal(productionConfig.apiBaseUrl, 'https://mood-tracker.jianghong.site/api');
+assert.equal(productionConfig.showCloudAccount, true);
 
 const androidConfig = createAppConfig({
   VITE_ANDROID_APP_VERSION: '1.2.3',

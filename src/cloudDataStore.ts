@@ -42,16 +42,23 @@ const parseJson = async <Result>(response: Response): Promise<Result> => {
 };
 
 const normalizeApiBaseUrl = (apiBaseUrl?: string) => (apiBaseUrl || '').trim().replace(/\/+$/, '');
+const resolveApiUrl = (apiBaseUrl: string, path: string) => {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (!apiBaseUrl) return normalizedPath;
+  if (apiBaseUrl.endsWith('/api') && normalizedPath.startsWith('/api/')) {
+    return `${apiBaseUrl}${normalizedPath.slice('/api'.length)}`;
+  }
+  return `${apiBaseUrl}${normalizedPath}`;
+};
 
 export const createCloudDataStore = (
   fetcher: typeof fetch = fetch,
   options: CloudDataStoreOptions = {}
 ): CloudDataStore => {
   const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
-  const withApiBase = (path: string) => `${apiBaseUrl}${path}`;
 
   const request = async <Result>(path: string, init: RequestInit = {}) => {
-    const response = await fetcher(withApiBase(path), {
+    const response = await fetcher(resolveApiUrl(apiBaseUrl, path), {
       ...init,
       credentials: 'include',
     });

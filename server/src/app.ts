@@ -17,11 +17,22 @@ const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => 
   });
 };
 
+const allowedOrigins = env.CLIENT_ORIGIN.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 export const createApp = (dependencies: AppDependencies = {}) => {
   const app = express();
 
   app.use(cors({
-    origin: env.CLIENT_ORIGIN,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   }));
   app.use(express.json({ limit: '1mb' }));

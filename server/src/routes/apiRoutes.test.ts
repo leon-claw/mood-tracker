@@ -17,6 +17,22 @@ const app = createApp({
 });
 
 const guest = request(app);
+await guest
+  .get('/api/health')
+  .set('Origin', 'capacitor://localhost')
+  .expect(200)
+  .expect((response) => {
+    assert.equal(response.headers['access-control-allow-origin'], 'capacitor://localhost');
+  });
+
+await guest
+  .get('/api/health')
+  .set('Origin', 'http://localhost')
+  .expect(200)
+  .expect((response) => {
+    assert.equal(response.headers['access-control-allow-origin'], 'http://localhost');
+  });
+
 const captchaResponse = await guest.get('/api/captcha').expect(200);
 assert.equal(typeof captchaResponse.body.captchaId, 'string');
 assert.match(captchaResponse.body.svg, /<svg/);

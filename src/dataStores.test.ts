@@ -143,4 +143,16 @@ assert.deepEqual(
   ]
 );
 
+calls.length = 0;
+const configuredApiRootCloud = createCloudDataStore(fetcher, { apiBaseUrl: 'https://mood-tracker.jianghong.site/api/' });
+await configuredApiRootCloud.getCaptcha();
+await configuredApiRootCloud.login('A@EXAMPLE.COM', 'password123');
+assert.deepEqual(
+  calls.map((call) => String(call.input)),
+  [
+    'https://mood-tracker.jianghong.site/api/captcha',
+    'https://mood-tracker.jianghong.site/api/auth/login',
+  ]
+);
+
 console.log('data store tests passed');

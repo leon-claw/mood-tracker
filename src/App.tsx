@@ -47,10 +47,13 @@ import {
   LogIn,
   LogOut,
   UserPlus,
+  Smartphone,
+  ExternalLink,
 } from 'lucide-react';
 
 type DataMode = 'local' | 'cloud';
 
+const ANDROID_RELEASES_URL = 'https://github.com/leon-claw/mood-tracker/releases';
 const cloudStore = createCloudDataStore(fetch, { apiBaseUrl: appConfig.apiBaseUrl });
 
 const applyAppData = (
@@ -401,47 +404,6 @@ export default function App() {
       });
     }
   };
-
-  // Calculate Streak Counts
-  const streakInfo = useMemo(() => {
-    // Sort all unique logged dates descending
-    const loggedDates = Array.from(new Set<string>(entries.map((e) => e.date))).sort(
-      (a: string, b: string) => b.localeCompare(a)
-    );
-
-    if (loggedDates.length === 0) return { currentStreak: 0, totalDays: 0 };
-
-    let currentStreak = 0;
-    const todayStr = new Date().toISOString().split('T')[0];
-    const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
-    // Check if the most recent log is today or yesterday to continue the streak
-    const mostRecent = loggedDates[0];
-    if (mostRecent !== todayStr && mostRecent !== yesterdayStr) {
-      return { currentStreak: 0, totalDays: loggedDates.length };
-    }
-
-    // Traverse backward to count continuous days
-    let expectedDate = new Date(mostRecent);
-    for (let i = 0; i < loggedDates.length; i++) {
-      const logDate = new Date(loggedDates[i]);
-      // Math.abs diff in days
-      const diffTime = Math.abs(expectedDate.getTime() - logDate.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays <= 1) {
-        currentStreak++;
-        expectedDate = logDate; // move expected backward
-      } else {
-        break;
-      }
-    }
-
-    return {
-      currentStreak,
-      totalDays: loggedDates.length,
-    };
-  }, [entries]);
 
   const todayEntry = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
@@ -807,23 +769,31 @@ export default function App() {
                 </div>
               )}
 
-              {/* Statistics Grid */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-white border border-[#F2EDE9] rounded-2xl p-3.5 text-center shadow-xs">
-                  <span className="text-[10px] text-gray-400 font-bold block uppercase leading-none mb-1.5">连续打卡</span>
-                  <span className="text-lg font-bold text-[#8FA88B] font-mono leading-none">{streakInfo.currentStreak}</span>
-                  <span className="text-[10px] text-gray-500 font-medium block mt-1">天</span>
+              <div className="bg-white border border-[#F2EDE9] rounded-3xl p-5 shadow-xs flex flex-col gap-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-[#4A4540] text-sm flex items-center gap-1.5">
+                      <Smartphone size={16} className="text-[#8FA88B]" />
+                      <span>Android 版本</span>
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                      前往 GitHub Releases 下载最新 APK 安装包。
+                    </p>
+                  </div>
+                  <span className="text-[10px] bg-[#E6F0E6] text-[#8FA88B] font-bold px-2 py-1 rounded-full shrink-0">
+                    APK
+                  </span>
                 </div>
-                <div className="bg-white border border-[#F2EDE9] rounded-2xl p-3.5 text-center shadow-xs">
-                  <span className="text-[10px] text-gray-400 font-bold block uppercase leading-none mb-1.5">打卡总天数</span>
-                  <span className="text-lg font-bold text-[#4A4540] font-mono leading-none">{streakInfo.totalDays}</span>
-                  <span className="text-[10px] text-gray-500 font-medium block mt-1">天</span>
-                </div>
-                <div className="bg-white border border-[#F2EDE9] rounded-2xl p-3.5 text-center shadow-xs">
-                  <span className="text-[10px] text-gray-400 font-bold block uppercase leading-none mb-1.5">可用积分</span>
-                  <span className="text-lg font-bold text-[#D48166] font-mono leading-none">{points}</span>
-                  <span className="text-[10px] text-gray-500 font-medium block mt-1">分</span>
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => window.open(ANDROID_RELEASES_URL, '_blank', 'noopener,noreferrer')}
+                  className="h-11 rounded-full bg-[#8FA88B] hover:bg-[#7D9779] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                >
+                  <Download size={15} />
+                  <span>下载 Android 版本</span>
+                  <ExternalLink size={13} />
+                </button>
               </div>
 
               {/* Data backup disclaimer */}

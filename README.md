@@ -98,9 +98,21 @@ npm run server:dev
 VITE_API_BASE_URL=http://localhost:4000 npm run dev
 ```
 
+Web 生产构建默认使用线上 API 根路径 `https://mood-tracker.jianghong.site/api/`，因此会显示账号与云端同步入口：
+
+```bash
+npm run build
+```
+
+部署到 `/app/` 子路径时使用：
+
+```bash
+npm run build:prod
+```
+
 ## Android APK
 
-Android 端使用 Capacitor 包装同一套 Web 应用。默认构建保持本地优先；只有在构建时提供 `VITE_API_BASE_URL`，账号和云端同步入口才会显示。
+Android 端使用 Capacitor 包装同一套 Web 应用。生产构建默认使用线上 API 根路径 `https://mood-tracker.jianghong.site/api/`，会显示账号和云端同步入口；如需指向其他后端，可在构建时提供 `VITE_API_BASE_URL`。
 
 准备环境：
 
@@ -117,6 +129,18 @@ npm run android:sync
 
 ```bash
 npm run android:apk:debug
+```
+
+构建带登录和云端同步入口的 debug APK：
+
+```bash
+npm run android:apk:debug:cloud
+```
+
+默认 API 地址为 `https://mood-tracker.jianghong.site/api/`。如需指向其他后端：
+
+```bash
+VITE_API_BASE_URL=https://api.example.com npm run android:apk:debug:cloud
 ```
 
 生成文件位于：
