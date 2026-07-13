@@ -31,8 +31,8 @@ export const ACHIEVEMENT_MILESTONE_OPTIONS: EnumOption[] = [
 ];
 
 export const FIELD_DEFINITIONS: FieldDefinition[] = [
-  { id: 'sleepQuality', label: '睡眠质量', type: 'scale', min: 1, max: 10, required: true },
-  { id: 'moodLevel', label: '心情等级', type: 'scale', min: 1, max: 10, required: true },
+  { id: 'sleepQuality', label: '睡眠质量', type: 'scale', min: 1, max: 10, required: false },
+  { id: 'moodLevel', label: '心情', type: 'scale', min: 1, max: 10, required: false },
   { id: 'energyLevel', label: '精力', type: 'scale', min: 1, max: 10, required: false },
   { id: 'dietHealth', label: '饮食健康', type: 'scale', min: 1, max: 10, required: false },
   { id: 'workEfficiency', label: '工作效率', type: 'scale', min: 1, max: 10, required: false },

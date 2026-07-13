@@ -8,7 +8,7 @@ import {
 const moodFlow = buildMoodFlowOption(INITIAL_DEMO_ENTRIES, 2026, 6) as any;
 assert.equal(moodFlow.series[0].type, 'line');
 assert.equal(moodFlow.series[0].data.length, INITIAL_DEMO_ENTRIES.length);
-assert.match(moodFlow.tooltip.formatter([{ data: moodFlow.series[0].data[0] }]), /心情等级/);
+assert.match(moodFlow.tooltip.formatter([{ data: moodFlow.series[0].data[0] }]), /心情/);
 assert.match(moodFlow.tooltip.formatter([{ data: moodFlow.series[0].data[0] }]), /睡眠质量/);
 
 const sleepMood = buildSleepMoodOption(INITIAL_DEMO_ENTRIES, 2026, 6) as any;

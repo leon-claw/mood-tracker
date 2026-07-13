@@ -30,7 +30,8 @@ assert.match(appSource, /appConfig\.updateManifestUrl/);
 assert.match(appSource, /fetchUpdateManifest/);
 assert.match(appSource, /isVersionNewer/);
 assert.match(appSource, /createCloudDataStore/);
-assert.match(appSource, /createCloudDataStore\(fetch,\s*\{\s*apiBaseUrl: appConfig\.apiBaseUrl\s*\}\)/);
+assert.match(appSource, /apiBaseUrl: appConfig\.apiBaseUrl/);
+assert.match(appSource, /useBearerToken: appConfig\.isNativeAndroid/);
 assert.match(appSource, /hasLocalBusinessData/);
 assert.match(appSource, /DataSourceChoiceDialog/);
 assert.match(appSource, /AuthDialog/);
@@ -45,7 +46,8 @@ assert.match(appSource, /cloudStore\.replaceData/);
 assert.match(appSource, /云端同步/);
 assert.match(appSource, /本地模式/);
 
-assert.match(cloudStoreSource, /credentials: 'include'/);
+assert.match(cloudStoreSource, /Authorization/);
+assert.match(cloudStoreSource, /credentials: useBearerToken \? 'omit' : 'include'/);
 assert.match(viteConfigSource, /proxy/);
 assert.match(viteConfigSource, /localhost:4000/);
 

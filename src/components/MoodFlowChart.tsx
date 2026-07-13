@@ -16,6 +16,7 @@ export const MoodFlowChart: React.FC<MoodFlowChartProps> = ({ entries, selectedY
       return date.getFullYear() === selectedYear && date.getMonth() + 1 === selectedMonth;
     });
   }, [entries, selectedYear, selectedMonth]);
+  const hasMoodData = monthEntries.some((entry) => typeof entry.values.moodLevel === 'number');
 
   const option = useMemo(
     () => buildMoodFlowOption(entries, selectedYear, selectedMonth),
@@ -31,7 +32,7 @@ export const MoodFlowChart: React.FC<MoodFlowChartProps> = ({ entries, selectedY
       <div className="relative w-full">
         <EChartView option={option} />
 
-        {monthEntries.length === 0 && (
+        {!hasMoodData && (
           <div id="no-data-alert" className="absolute inset-0 flex flex-col items-center justify-center bg-white/65">
             <span className="text-3xl mb-1">🌱</span>
             <p className="text-xs text-gray-400">本月暂无心情记录，点击下方“+”记录吧</p>

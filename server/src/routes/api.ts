@@ -13,6 +13,8 @@ interface ApiRouterDependencies {
   captchaTextFactory?: () => string;
 }
 
+const AUTH_MODE_HEADER = 'x-mood-tracker-auth';
+
 const emailSchema = z.string().email().transform((email) => email.trim().toLowerCase());
 const passwordSchema = z.string().min(8);
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -60,6 +62,19 @@ const sendUser = (user: UserRecord) => ({
   id: user.id,
   email: user.email,
 });
+
+const wantsBearerAuth = (request: Request) =>
+  request.header(AUTH_MODE_HEADER)?.toLowerCase() === 'bearer';
+
+const sendAuthenticatedUser = (request: Request, response: Response, user: UserRecord, token: string) => {
+  if (wantsBearerAuth(request)) {
+    response.json({ user: sendUser(user), token });
+    return;
+  }
+
+  setSessionCookie(response, token);
+  response.json({ user: sendUser(user) });
+};
 
 const asyncHandler = (
   handler: (request: Request, response: Response, next: NextFunction) => Promise<void>
@@ -126,8 +141,7 @@ export const createApiRouter = ({
     const passwordHash = await hashPassword(body.password);
     const user = await repository.createUser(body.email, passwordHash);
     const token = signSessionToken({ userId: user.id, email: user.email }, jwtSecret);
-    setSessionCookie(response, token);
-    response.json({ user: sendUser(user) });
+    sendAuthenticatedUser(request, response, user, token);
   }));
 
   router.post('/auth/login', asyncHandler(async (request, response) => {
@@ -140,12 +154,13 @@ export const createApiRouter = ({
     }
 
     const token = signSessionToken({ userId: user.id, email: user.email }, jwtSecret);
-    setSessionCookie(response, token);
-    response.json({ user: sendUser(user) });
+    sendAuthenticatedUser(request, response, user, token);
   }));
 
-  router.post('/auth/logout', (_request, response) => {
-    clearSessionCookie(response);
+  router.post('/auth/logout', (request, response) => {
+    if (!wantsBearerAuth(request)) {
+      clearSessionCookie(response);
+    }
     response.json({ ok: true });
   });
 

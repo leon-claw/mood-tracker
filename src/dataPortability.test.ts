@@ -78,9 +78,6 @@ assert.deepEqual(
         values: {
           sleepQuality: 1,
           moodLevel: 10,
-          energyLevel: 1,
-          dietHealth: 1,
-          workEfficiency: 1,
           activities: ['running'],
           weather: [],
           social: ['party'],

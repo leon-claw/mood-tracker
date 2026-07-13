@@ -9,7 +9,7 @@ export const MOOD_BUCKETS = [
 ];
 
 const getNumberValue = (entry: LogEntry, field: string) =>
-  typeof entry.values[field] === 'number' ? entry.values[field] as number : 0;
+  typeof entry.values[field] === 'number' ? entry.values[field] as number : undefined;
 
 const getStringValue = (entry: LogEntry, field: string) =>
   typeof entry.values[field] === 'string' ? entry.values[field] as string : '';
@@ -23,20 +23,33 @@ export const getMonthEntries = (entries: LogEntry[], year: number, month: number
     .sort((a, b) => a.date.localeCompare(b.date));
 
 export const getMoodFlowData = (entries: LogEntry[], year: number, month: number) =>
-  getMonthEntries(entries, year, month).map((entry) => ({
-    date: entry.date,
-    moodLevel: getNumberValue(entry, 'moodLevel'),
-    sleepQuality: getNumberValue(entry, 'sleepQuality'),
-    journal: getStringValue(entry, 'journal'),
-  }));
+  getMonthEntries(entries, year, month).reduce<{
+    date: string;
+    moodLevel: number;
+    sleepQuality?: number;
+    journal: string;
+  }[]>((result, entry) => {
+    const moodLevel = getNumberValue(entry, 'moodLevel');
+    if (moodLevel === undefined) return result;
+
+    const sleepQuality = getNumberValue(entry, 'sleepQuality');
+    result.push({
+      date: entry.date,
+      moodLevel,
+      ...(sleepQuality === undefined ? {} : { sleepQuality }),
+      journal: getStringValue(entry, 'journal'),
+    });
+    return result;
+  }, []);
 
 export const getMoodDistributionData = (entries: LogEntry[], year: number, month: number) => {
-  const monthEntries = getMonthEntries(entries, year, month);
+  const monthEntries = getMonthEntries(entries, year, month)
+    .filter((entry) => getNumberValue(entry, 'moodLevel') !== undefined);
   const total = monthEntries.length;
 
   return MOOD_BUCKETS.map((bucket) => {
     const count = monthEntries.filter((entry) => {
-      const moodLevel = getNumberValue(entry, 'moodLevel');
+      const moodLevel = getNumberValue(entry, 'moodLevel') || 0;
       return moodLevel >= bucket.min && moodLevel <= bucket.max;
     }).length;
 
@@ -53,9 +66,10 @@ export const getSleepMoodData = (entries: LogEntry[], year: number, month: numbe
     const sleepQuality = index + 1;
     const matchingEntries = getMonthEntries(entries, year, month).filter(
       (entry) => getNumberValue(entry, 'sleepQuality') === sleepQuality
+        && getNumberValue(entry, 'moodLevel') !== undefined
     );
     const moodTotal = matchingEntries.reduce(
-      (sum, entry) => sum + getNumberValue(entry, 'moodLevel'),
+      (sum, entry) => sum + (getNumberValue(entry, 'moodLevel') || 0),
       0
     );
 

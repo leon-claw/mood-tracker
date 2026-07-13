@@ -44,6 +44,12 @@ export const verifySessionToken = (token: string, secret: Secret): SessionUser |
 const isProduction = process.env.NODE_ENV === 'production';
 const sameSiteMode = isProduction ? 'none' : 'lax';
 
+const getBearerToken = (request: Request) => {
+  const authorization = request.header('authorization');
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1];
+};
+
 export const setSessionCookie = (response: Response, token: string) => {
   response.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
@@ -65,7 +71,7 @@ export const clearSessionCookie = (response: Response) => {
 
 export const createRequireAuth = (secret: string) =>
   (request: AuthenticatedRequest, response: Response, next: NextFunction) => {
-    const token = request.cookies?.[SESSION_COOKIE_NAME];
+    const token = request.cookies?.[SESSION_COOKIE_NAME] || getBearerToken(request);
     if (typeof token !== 'string') {
       response.status(401).json({ error: { code: 'UNAUTHENTICATED', message: '请先登录。' } });
       return;

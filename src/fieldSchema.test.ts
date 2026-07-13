@@ -24,8 +24,8 @@ assert.deepEqual(
 
 const moodLevel = getFieldDefinition('moodLevel');
 assert.equal(moodLevel?.type, 'scale');
-assert.equal(moodLevel?.label, '心情等级');
-assert.equal(moodLevel?.required, true);
+assert.equal(moodLevel?.label, '心情');
+assert.equal(moodLevel?.required, false);
 if (moodLevel?.type === 'scale') {
   assert.equal(moodLevel.min, 1);
   assert.equal(moodLevel.max, 10);

@@ -1,6 +1,6 @@
 import React, { FormEvent, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { KeyRound, LogIn, RefreshCw, UserPlus, X } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, LogIn, RefreshCw, UserPlus, X } from 'lucide-react';
 import { AuthUser, CloudDataStore } from '../cloudDataStore';
 
 export type AuthDialogMode = 'login' | 'register' | 'password';
@@ -13,8 +13,52 @@ interface AuthDialogProps {
   onModeChange: (mode: AuthDialogMode) => void;
   onAuthenticated: (user: AuthUser) => void;
   onPasswordChanged: () => void;
+  onError?: (message: string) => void;
   onClose: () => void;
 }
+
+interface PasswordInputProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  isVisible: boolean;
+  onToggleVisibility: () => void;
+  minLength?: number;
+  autoComplete?: string;
+}
+
+const PasswordInput: React.FC<PasswordInputProps> = ({
+  label,
+  value,
+  onChange,
+  isVisible,
+  onToggleVisibility,
+  minLength,
+  autoComplete,
+}) => (
+  <label className="flex flex-col gap-1.5 text-xs font-semibold text-gray-500">
+    {label}
+    <div className="relative">
+      <input
+        type={isVisible ? 'text' : 'password'}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-2xl bg-gray-50 border border-gray-100 pl-3 pr-11 text-sm text-[#4A4540] outline-none focus:border-[#8FA88B] focus:bg-white"
+        minLength={minLength}
+        autoComplete={autoComplete}
+        required
+      />
+      <button
+        type="button"
+        onClick={onToggleVisibility}
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full text-gray-400 hover:text-[#8FA88B] hover:bg-[#E6F0E6]/60 transition-colors flex items-center justify-center"
+        aria-label={isVisible ? `隐藏${label}` : `显示${label}`}
+      >
+        {isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  </label>
+);
 
 export const AuthDialog: React.FC<AuthDialogProps> = ({
   isOpen,
@@ -24,6 +68,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   onModeChange,
   onAuthenticated,
   onPasswordChanged,
+  onError,
   onClose,
 }) => {
   const [email, setEmail] = useState('');
@@ -35,6 +80,9 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   const [captchaText, setCaptchaText] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isCurrentPasswordVisible, setIsCurrentPasswordVisible] = useState(false);
+  const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false);
 
   const isRegister = mode === 'register';
   const isPasswordMode = mode === 'password';
@@ -47,7 +95,9 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
       setCaptchaSvg(captcha.svg);
       setCaptchaText('');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '验证码加载失败。');
+      const errorMessage = error instanceof Error ? error.message : '验证码加载失败。';
+      setMessage(errorMessage);
+      onError?.(errorMessage);
     }
   };
 
@@ -58,6 +108,9 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
     setCurrentPassword('');
     setNewPassword('');
     setCaptchaText('');
+    setIsPasswordVisible(false);
+    setIsCurrentPasswordVisible(false);
+    setIsNewPasswordVisible(false);
     if (currentUser?.email && mode !== 'register') {
       setEmail(currentUser.email);
     }
@@ -82,7 +135,9 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
       }
       onClose();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '操作失败，请稍后再试。');
+      const errorMessage = error instanceof Error ? error.message : '操作失败，请稍后再试。';
+      setMessage(errorMessage);
+      onError?.(errorMessage);
       if (mode === 'register') {
         void loadCaptcha();
       }
@@ -142,40 +197,34 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
 
               {isPasswordMode ? (
                 <>
-                  <label className="flex flex-col gap-1.5 text-xs font-semibold text-gray-500">
-                    当前密码
-                    <input
-                      type="password"
-                      value={currentPassword}
-                      onChange={(event) => setCurrentPassword(event.target.value)}
-                      className="h-11 rounded-2xl bg-gray-50 border border-gray-100 px-3 text-sm text-[#4A4540] outline-none focus:border-[#8FA88B] focus:bg-white"
-                      required
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5 text-xs font-semibold text-gray-500">
-                    新密码
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(event) => setNewPassword(event.target.value)}
-                      className="h-11 rounded-2xl bg-gray-50 border border-gray-100 px-3 text-sm text-[#4A4540] outline-none focus:border-[#8FA88B] focus:bg-white"
-                      minLength={8}
-                      required
-                    />
-                  </label>
+                  <PasswordInput
+                    label="当前密码"
+                    value={currentPassword}
+                    onChange={setCurrentPassword}
+                    isVisible={isCurrentPasswordVisible}
+                    onToggleVisibility={() => setIsCurrentPasswordVisible((value) => !value)}
+                    autoComplete="current-password"
+                  />
+                  <PasswordInput
+                    label="新密码"
+                    value={newPassword}
+                    onChange={setNewPassword}
+                    isVisible={isNewPasswordVisible}
+                    onToggleVisibility={() => setIsNewPasswordVisible((value) => !value)}
+                    minLength={8}
+                    autoComplete="new-password"
+                  />
                 </>
               ) : (
-                <label className="flex flex-col gap-1.5 text-xs font-semibold text-gray-500">
-                  密码
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    className="h-11 rounded-2xl bg-gray-50 border border-gray-100 px-3 text-sm text-[#4A4540] outline-none focus:border-[#8FA88B] focus:bg-white"
-                    minLength={isRegister ? 8 : undefined}
-                    required
-                  />
-                </label>
+                <PasswordInput
+                  label="密码"
+                  value={password}
+                  onChange={setPassword}
+                  isVisible={isPasswordVisible}
+                  onToggleVisibility={() => setIsPasswordVisible((value) => !value)}
+                  minLength={isRegister ? 8 : undefined}
+                  autoComplete={isRegister ? 'new-password' : 'current-password'}
+                />
               )}
 
               {isRegister && (

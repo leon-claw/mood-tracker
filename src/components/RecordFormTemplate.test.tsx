@@ -16,7 +16,7 @@ const markup = renderToStaticMarkup(
 
 for (const label of [
   '睡眠质量',
-  '心情等级',
+  '心情',
   '精力',
   '饮食健康',
   '工作效率',
@@ -29,6 +29,9 @@ for (const label of [
 ]) {
   assert.ok(markup.includes(label), `expected form to include ${label}`);
 }
+
+assert.ok(markup.includes('未选择'), 'expected scale fields to start without a selected value');
+assert.equal(markup.includes('7/10'), false, 'expected scale fields not to default to 7/10');
 
 for (const option of [
   '跑步',

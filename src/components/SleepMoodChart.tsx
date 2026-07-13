@@ -24,7 +24,7 @@ export const SleepMoodChart: React.FC<SleepMoodChartProps> = ({ entries, selecte
       <EChartView option={option} />
 
       <div id="sleep-insight-text" className="text-center mt-3 text-xs text-gray-400 font-sans leading-relaxed">
-        <span>根据数据，睡眠质量越稳定，心情等级通常也越容易保持在较好的区间。</span>
+        <span>根据数据，睡眠质量越稳定，心情通常也越容易保持在较好的区间。</span>
       </div>
     </div>
   );

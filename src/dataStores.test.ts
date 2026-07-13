@@ -91,7 +91,7 @@ const fetcher: typeof fetch = async (input, init) => {
     return new Response(JSON.stringify({ captchaId: 'captcha-1', svg: '<svg></svg>', expiresAt: '2026-07-08T00:00:00.000Z' }));
   }
   if (String(input).endsWith('/api/auth/login')) {
-    return new Response(JSON.stringify({ user: { id: 'user-1', email: 'a@example.com' } }));
+    return new Response(JSON.stringify({ user: { id: 'user-1', email: 'a@example.com' }, token: 'token-1' }));
   }
   if (String(input).endsWith('/api/sync')) {
     return new Response(JSON.stringify(data));
@@ -130,6 +130,32 @@ assert.deepEqual(
 assert.equal(calls[1].init?.headers && (calls[1].init.headers as Record<string, string>)['Content-Type'], 'application/json');
 assert.equal(JSON.parse(String(calls[1].init?.body)).email, 'A@EXAMPLE.COM');
 assert.equal(JSON.parse(String(calls[2].init?.body)).entries[0].id, 'entry-1');
+
+calls.length = 0;
+const bearerCloud = createCloudDataStore(fetcher, {
+  useBearerToken: true,
+  tokenStorageKey: 'mood_tracker_test_token',
+});
+assert.deepEqual(await bearerCloud.login('A@EXAMPLE.COM', 'password123'), {
+  id: 'user-1',
+  email: 'a@example.com',
+});
+assert.deepEqual(await bearerCloud.getData(), data);
+await bearerCloud.logout();
+
+assert.deepEqual(
+  calls.map((call) => [String(call.input), call.init?.method || 'GET', call.init?.credentials]),
+  [
+    ['/api/auth/login', 'POST', 'omit'],
+    ['/api/sync', 'GET', 'omit'],
+    ['/api/auth/logout', 'POST', 'omit'],
+  ]
+);
+assert.equal((calls[0].init?.headers as Record<string, string>)['X-Mood-Tracker-Auth'], 'bearer');
+assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, undefined);
+assert.equal((calls[1].init?.headers as Record<string, string>)['X-Mood-Tracker-Auth'], 'bearer');
+assert.equal((calls[1].init?.headers as Record<string, string>).Authorization, 'Bearer token-1');
+assert.equal(localStorage.getItem('mood_tracker_test_token'), null);
 
 calls.length = 0;
 const configuredCloud = createCloudDataStore(fetcher, { apiBaseUrl: 'https://api.example.com///' });

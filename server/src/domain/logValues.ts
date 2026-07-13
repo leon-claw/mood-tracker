@@ -5,10 +5,12 @@ const ACTIVITY_IDS = ['running', 'hiking', 'swimming', 'fitness', 'other'];
 const WEATHER_IDS = ['sunny', 'cloudy', 'rainy', 'snowy', 'hot', 'storm', 'windy'];
 const SOCIAL_IDS = ['family', 'friends', 'party', 'event'];
 const ACHIEVEMENT_MILESTONE_IDS = ['historicalAchievement', 'newStage'];
+const SCALE_FIELD_IDS = ['sleepQuality', 'moodLevel', 'energyLevel', 'dietHealth', 'workEfficiency'] as const;
 
-const clampScaleValue = (value: unknown) => {
+const normalizeScaleValue = (value: unknown) => {
+  if (value === undefined || value === null || value === '') return undefined;
   const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(parsed)) return 1;
+  if (!Number.isFinite(parsed)) return undefined;
   return Math.min(10, Math.max(1, Math.round(parsed)));
 };
 
@@ -20,11 +22,13 @@ const filterEnumValues = (value: unknown, allowedIds: string[]) => {
 };
 
 export const sanitizeServerLogValues = (values: Partial<Record<string, unknown>>): ServerLogValues => ({
-  sleepQuality: clampScaleValue(values.sleepQuality),
-  moodLevel: clampScaleValue(values.moodLevel),
-  energyLevel: clampScaleValue(values.energyLevel),
-  dietHealth: clampScaleValue(values.dietHealth),
-  workEfficiency: clampScaleValue(values.workEfficiency),
+  ...SCALE_FIELD_IDS.reduce<ServerLogValues>((result, fieldId) => {
+    const normalized = normalizeScaleValue(values[fieldId]);
+    if (normalized !== undefined) {
+      result[fieldId] = normalized;
+    }
+    return result;
+  }, {}),
   activities: filterEnumValues(values.activities, ACTIVITY_IDS),
   weather: filterEnumValues(values.weather, WEATHER_IDS),
   social: filterEnumValues(values.social, SOCIAL_IDS),

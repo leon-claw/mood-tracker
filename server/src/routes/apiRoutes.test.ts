@@ -53,6 +53,7 @@ await userAgent
     const cookies = response.headers['set-cookie'];
     const cookieList = Array.isArray(cookies) ? cookies : cookies ? [cookies] : [];
     assert.ok(cookieList.some((cookie: string) => cookie.includes('mood_tracker_session')));
+    assert.equal(response.body.token, undefined);
   });
 
 await guest
@@ -97,6 +98,26 @@ await loggedInAgent
   .send({ email: 'user@example.com', password: 'NewStrongPass456' })
   .expect(200);
 
+const bearerLoginResponse = await guest
+  .post('/api/auth/login')
+  .set('X-Mood-Tracker-Auth', 'bearer')
+  .send({ email: 'user@example.com', password: 'NewStrongPass456' })
+  .expect(200)
+  .expect((response) => {
+    assert.equal(response.body.user.email, 'user@example.com');
+    assert.equal(typeof response.body.token, 'string');
+    assert.equal(response.headers['set-cookie'], undefined);
+  });
+const bearerToken = bearerLoginResponse.body.token;
+
+await guest
+  .get('/api/me')
+  .set('Authorization', `Bearer ${bearerToken}`)
+  .expect(200)
+  .expect((response) => {
+    assert.equal(response.body.user.email, 'user@example.com');
+  });
+
 const syncData: SyncData = {
   entries: [
     {
@@ -129,6 +150,14 @@ await loggedInAgent.put('/api/sync').send(syncData).expect(200).expect((response
 await loggedInAgent.get('/api/sync').expect(200).expect((response) => {
   assert.deepEqual(response.body, syncData);
 });
+
+await guest
+  .get('/api/sync')
+  .set('Authorization', `Bearer ${bearerToken}`)
+  .expect(200)
+  .expect((response) => {
+    assert.deepEqual(response.body, syncData);
+  });
 
 await loggedInAgent
   .post('/api/entries')

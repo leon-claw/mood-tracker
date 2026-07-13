@@ -99,7 +99,7 @@ const ProductPreview = () => (
       </div>
 
       <div className="record-strip">
-        <span>🙂 心情等级 8</span>
+        <span>🙂 心情 8</span>
         <span>🏃 跑步</span>
         <span>☀️ 晴朗</span>
         <span>🎉 派对</span>

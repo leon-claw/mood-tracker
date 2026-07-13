@@ -48,9 +48,10 @@ export const buildMoodFlowOption = (
         const journal = point.journal
           ? `<div style="color:#9ca3af;font-style:italic;margin-top:4px;max-width:170px;">"${point.journal}"</div>`
           : '';
+        const sleepQuality = typeof point.sleepQuality === 'number' ? `${point.sleepQuality}/10` : '未记录';
         return `<div style="font-weight:600;margin-bottom:4px;">${point.date}</div>
-          <div>心情等级：<b>${point.moodLevel}/10</b></div>
-          <div style="color:#6b7280;margin-top:2px;">睡眠质量：<b>${point.sleepQuality}/10</b></div>
+          <div>心情：<b>${point.moodLevel}/10</b></div>
+          <div style="color:#6b7280;margin-top:2px;">睡眠质量：<b>${sleepQuality}</b></div>
           ${journal}`;
       },
     },

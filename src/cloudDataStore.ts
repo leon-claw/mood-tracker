@@ -6,6 +6,11 @@ export interface AuthUser {
   email: string;
 }
 
+interface AuthResponse {
+  user: AuthUser;
+  token?: string;
+}
+
 export interface CaptchaChallenge {
   captchaId: string;
   svg: string;
@@ -28,6 +33,8 @@ export interface CloudDataStore {
 
 export interface CloudDataStoreOptions {
   apiBaseUrl?: string;
+  useBearerToken?: boolean;
+  tokenStorageKey?: string;
 }
 
 const parseJson = async <Result>(response: Response): Promise<Result> => {
@@ -42,6 +49,9 @@ const parseJson = async <Result>(response: Response): Promise<Result> => {
 };
 
 const normalizeApiBaseUrl = (apiBaseUrl?: string) => (apiBaseUrl || '').trim().replace(/\/+$/, '');
+const AUTH_MODE_HEADER = 'X-Mood-Tracker-Auth';
+const DEFAULT_TOKEN_STORAGE_KEY = 'mood_tracker_cloud_token';
+
 const resolveApiUrl = (apiBaseUrl: string, path: string) => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   if (!apiBaseUrl) return normalizedPath;
@@ -51,16 +61,78 @@ const resolveApiUrl = (apiBaseUrl: string, path: string) => {
   return `${apiBaseUrl}${normalizedPath}`;
 };
 
+const normalizeHeaders = (headers?: HeadersInit) => {
+  const normalized: Record<string, string> = {};
+  if (!headers) return normalized;
+
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => {
+      normalized[key] = value;
+    });
+    return normalized;
+  }
+
+  if (Array.isArray(headers)) {
+    for (const [key, value] of headers) {
+      normalized[key] = value;
+    }
+    return normalized;
+  }
+
+  return { ...headers };
+};
+
 export const createCloudDataStore = (
   fetcher: typeof fetch = fetch,
   options: CloudDataStoreOptions = {}
 ): CloudDataStore => {
   const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
+  const useBearerToken = options.useBearerToken === true;
+  const tokenStorageKey = options.tokenStorageKey || DEFAULT_TOKEN_STORAGE_KEY;
+  let memoryToken: string | null = null;
+
+  const readAuthToken = () => {
+    if (!useBearerToken) return null;
+    try {
+      return localStorage.getItem(tokenStorageKey) || memoryToken;
+    } catch {
+      return memoryToken;
+    }
+  };
+
+  const saveAuthToken = (token: string) => {
+    memoryToken = token;
+    try {
+      localStorage.setItem(tokenStorageKey, token);
+    } catch {
+      // Keep the in-memory token for environments without writable localStorage.
+    }
+  };
+
+  const clearAuthToken = () => {
+    memoryToken = null;
+    try {
+      localStorage.removeItem(tokenStorageKey);
+    } catch {
+      // Nothing to clear when localStorage is unavailable.
+    }
+  };
 
   const request = async <Result>(path: string, init: RequestInit = {}) => {
+    const headers = normalizeHeaders(init.headers);
+    const token = readAuthToken();
+
+    if (useBearerToken) {
+      headers[AUTH_MODE_HEADER] = 'bearer';
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+    }
+
     const response = await fetcher(resolveApiUrl(apiBaseUrl, path), {
       ...init,
-      credentials: 'include',
+      headers,
+      credentials: useBearerToken ? 'omit' : 'include',
     });
     return parseJson<Result>(response);
   };
@@ -77,15 +149,27 @@ export const createCloudDataStore = (
   return {
     getCaptcha: () => request<CaptchaChallenge>('/api/captcha'),
     async register(payload) {
-      const response = await jsonRequest<{ user: AuthUser }>('/api/auth/register', 'POST', payload);
+      const response = await jsonRequest<AuthResponse>('/api/auth/register', 'POST', payload);
+      if (useBearerToken) {
+        if (!response.token) throw new Error('登录响应缺少访问令牌。');
+        saveAuthToken(response.token);
+      }
       return response.user;
     },
     async login(email, password) {
-      const response = await jsonRequest<{ user: AuthUser }>('/api/auth/login', 'POST', { email, password });
+      const response = await jsonRequest<AuthResponse>('/api/auth/login', 'POST', { email, password });
+      if (useBearerToken) {
+        if (!response.token) throw new Error('登录响应缺少访问令牌。');
+        saveAuthToken(response.token);
+      }
       return response.user;
     },
     async logout() {
-      await request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' });
+      try {
+        await request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' });
+      } finally {
+        clearAuthToken();
+      }
     },
     async getMe() {
       try {

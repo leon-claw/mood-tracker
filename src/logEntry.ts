@@ -7,19 +7,16 @@ import {
 } from './fieldSchema';
 
 export const ENTRY_STORAGE_KEY = 'mood_tracker_entries_v4';
+const SCALE_FIELD_IDS = ['sleepQuality', 'moodLevel', 'energyLevel', 'dietHealth', 'workEfficiency'] as const;
 
-export const clampScaleValue = (value: unknown) => {
+export const normalizeScaleValue = (value: unknown) => {
+  if (value === undefined || value === null || value === '') return undefined;
   const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(parsed)) return 1;
+  if (!Number.isFinite(parsed)) return undefined;
   return Math.min(10, Math.max(1, Math.round(parsed)));
 };
 
 export const createDefaultLogValues = (): LogValues => ({
-  sleepQuality: 7,
-  moodLevel: 7,
-  energyLevel: 7,
-  dietHealth: 7,
-  workEfficiency: 7,
   activities: [],
   weather: [],
   social: [],
@@ -36,11 +33,13 @@ const filterEnumValues = (value: unknown, options: { id: string }[]) => {
 };
 
 export const sanitizeLogValues = (values: Partial<LogValues>): LogValues => ({
-  sleepQuality: clampScaleValue(values.sleepQuality),
-  moodLevel: clampScaleValue(values.moodLevel),
-  energyLevel: clampScaleValue(values.energyLevel),
-  dietHealth: clampScaleValue(values.dietHealth),
-  workEfficiency: clampScaleValue(values.workEfficiency),
+  ...SCALE_FIELD_IDS.reduce<LogValues>((result, fieldId) => {
+    const normalized = normalizeScaleValue(values[fieldId]);
+    if (normalized !== undefined) {
+      result[fieldId] = normalized;
+    }
+    return result;
+  }, {}),
   activities: filterEnumValues(values.activities, ACTIVITY_OPTIONS),
   weather: filterEnumValues(values.weather, WEATHER_OPTIONS),
   social: filterEnumValues(values.social, SOCIAL_OPTIONS),

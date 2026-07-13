@@ -25,7 +25,6 @@ assert.deepEqual(dirtyValues, {
   moodLevel: 10,
   energyLevel: 8,
   dietHealth: 7,
-  workEfficiency: 1,
   activities: ['running', 'fitness'],
   weather: ['sunny'],
   social: ['party'],

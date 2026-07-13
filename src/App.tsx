@@ -52,9 +52,29 @@ import {
 } from 'lucide-react';
 
 type DataMode = 'local' | 'cloud';
+type YearMonth = { year: number; month: number };
+type ToastState = { type: 'success' | 'error'; message: string } | null;
 
 const ANDROID_RELEASES_URL = 'https://github.com/leon-claw/mood-tracker/releases';
-const cloudStore = createCloudDataStore(fetch, { apiBaseUrl: appConfig.apiBaseUrl });
+const cloudStore = createCloudDataStore(fetch, {
+  apiBaseUrl: appConfig.apiBaseUrl,
+  useBearerToken: appConfig.isNativeAndroid,
+});
+
+const getCurrentYearMonth = (): YearMonth => {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+};
+
+const shiftYearMonth = (year: number, month: number, offset: number): YearMonth => {
+  const shifted = new Date(year, month - 1 + offset, 1);
+  return { year: shifted.getFullYear(), month: shifted.getMonth() + 1 };
+};
+
+const formatYearMonth = ({ year, month }: YearMonth) => `${year}年 ${month}月`;
+
+const getOptionalNumber = (value: unknown) => typeof value === 'number' ? value : null;
+const formatScaleValue = (value: number | null) => value === null ? '未记录' : `${value}/10`;
 
 const applyAppData = (
   data: ReturnType<typeof readLocalAppData>,
@@ -74,6 +94,7 @@ const applyAppData = (
 export default function App() {
   // 1. State Initialization
   const initialLocalData = useMemo(() => readLocalAppData(), []);
+  const initialYearMonth = useMemo(() => getCurrentYearMonth(), []);
   const [entries, setEntries] = useState<LogEntry[]>(() => initialLocalData.entries);
 
   const [activeTab, setActiveTab] = useState<AppTab>(() => getTabFromHash(window.location.hash));
@@ -87,11 +108,11 @@ export default function App() {
   const showCloudAccount = appConfig.showCloudAccount;
 
   // Month and Year selector states
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
-  const [selectedMonth, setSelectedMonth] = useState<number>(6); // Default to June 2026 matching screenshots
+  const [selectedYear, setSelectedYear] = useState<number>(() => initialYearMonth.year);
+  const [selectedMonth, setSelectedMonth] = useState<number>(() => initialYearMonth.month);
   const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
-  const [calendarYear, setCalendarYear] = useState<number>(2026);
-  const [calendarMonth, setCalendarMonth] = useState<number>(6);
+  const [calendarYear, setCalendarYear] = useState<number>(() => initialYearMonth.year);
+  const [calendarMonth, setCalendarMonth] = useState<number>(() => initialYearMonth.month);
   const [calendarEditorDate, setCalendarEditorDate] = useState<string | null>(null);
 
   // Gamification & Unlock states
@@ -100,10 +121,7 @@ export default function App() {
   const [isPremiumUnlocked, setIsPremiumUnlocked] = useState<boolean>(() => initialLocalData.isPremiumUnlocked);
   // Daily Logging modal state
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  const [dataImportStatus, setDataImportStatus] = useState<{
-    type: 'success' | 'error';
-    message: string;
-  } | null>(null);
+  const [toast, setToast] = useState<ToastState>(null);
 
   // Search & Filter state for Log history tab
   const [logSearchQuery, setLogSearchQuery] = useState('');
@@ -187,6 +205,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!toast) return;
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, toast.type === 'error' ? 4200 : 2800);
+
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
     if (activeTab === 'calendar') {
       calendarTransitionHasMounted.current = true;
       return;
@@ -211,7 +239,7 @@ export default function App() {
   });
 
   const setDataStatus = (type: 'success' | 'error', message: string) => {
-    setDataImportStatus({ type, message });
+    setToast({ type, message });
   };
 
   const syncUserState = async (nextPoints = points, nextUnlockedItems = unlockedItems, nextPremium = isPremiumUnlocked) => {
@@ -370,12 +398,9 @@ export default function App() {
         json,
         filename: `mood-tracker-export-${new Date().toISOString().slice(0, 10)}.json`,
       });
-      setDataImportStatus({ type: 'success', message: '已导出 JSON 备份。' });
+      setDataStatus('success', '已导出 JSON 备份。');
     } catch (error) {
-      setDataImportStatus({
-        type: 'error',
-        message: error instanceof Error ? error.message : '导出失败，请稍后再试。',
-      });
+      setDataStatus('error', error instanceof Error ? error.message : '导出失败，请稍后再试。');
     }
   };
 
@@ -393,15 +418,9 @@ export default function App() {
         setUnlockedItems,
         setIsPremiumUnlocked,
       });
-      setDataImportStatus({
-        type: 'success',
-        message: `已导入 ${imported.entries.length} 条记录。`,
-      });
+      setDataStatus('success', `已导入 ${imported.entries.length} 条记录。`);
     } catch (error) {
-      setDataImportStatus({
-        type: 'error',
-        message: error instanceof Error ? error.message : '导入失败，请检查 JSON 文件。',
-      });
+      setDataStatus('error', error instanceof Error ? error.message : '导入失败，请检查 JSON 文件。');
     }
   };
 
@@ -416,12 +435,13 @@ export default function App() {
   );
   const disableCalendarInitialAnimation = activeTab === 'calendar' && !calendarTransitionHasMounted.current;
 
-  // Month selection options
-  const monthOptions = [
-    { year: 2026, month: 6, label: '2026年 6月' },
-    { year: 2026, month: 7, label: '2026年 7月' },
-    { year: 2026, month: 5, label: '2026年 5月' },
-  ];
+  const monthOptions = useMemo(
+    () => [0, -1, -2].map((offset) => {
+      const yearMonth = shiftYearMonth(initialYearMonth.year, initialYearMonth.month, offset);
+      return { ...yearMonth, label: formatYearMonth(yearMonth) };
+    }),
+    [initialYearMonth.month, initialYearMonth.year]
+  );
 
   return (
     <div id="app-viewport-wrapper" className="h-dvh overflow-hidden bg-[#EAE7E2] flex items-center justify-center p-0 sm:pt-6 sm:pb-0 md:pt-10">
@@ -432,6 +452,27 @@ export default function App() {
       >
         {/* Phone Speaker/Camera Notch decorator on desktop */}
         <div className="hidden sm:block absolute top-2 left-1/2 -translate-x-1/2 w-24 h-4 bg-white rounded-full border border-[#F2EDE9] z-40"></div>
+
+        {toast && (
+          <div id="global-toast" className="absolute left-5 right-5 top-5 z-[70] pointer-events-none">
+            <div
+              className={`mx-auto flex w-full items-start gap-2 rounded-2xl border px-3.5 py-3 text-xs font-semibold shadow-lg backdrop-blur-md ${
+                toast.type === 'success'
+                  ? 'border-[#D8E7D6] bg-white/95 text-[#6E876B]'
+                  : 'border-rose-100 bg-white/95 text-rose-600'
+              }`}
+              role="status"
+              aria-live="polite"
+            >
+              {toast.type === 'success' ? (
+                <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+              ) : (
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              )}
+              <span className="leading-relaxed">{toast.message}</span>
+            </div>
+          </div>
+        )}
 
         {/* Scrollable Content Pane */}
         <div id="main-scroll-pane" className="relative flex-1 overflow-y-auto pt-8 pb-24 px-5 scrollbar-none">
@@ -495,15 +536,15 @@ export default function App() {
                 {entries
                   .filter((e) => {
                     const journal = typeof e.values.journal === 'string' ? e.values.journal : '';
-                    const moodLevel = typeof e.values.moodLevel === 'number' ? e.values.moodLevel : 0;
+                    const moodLevel = getOptionalNumber(e.values.moodLevel);
                     const matchesSearch = journal.toLowerCase().includes(logSearchQuery.toLowerCase());
                     const matchesMood = selectedMoodFilter === null || moodLevel === selectedMoodFilter;
                     return matchesSearch && matchesMood;
                   })
                   .sort((a, b) => b.date.localeCompare(a.date))
                   .map((e) => {
-                    const moodLevel = typeof e.values.moodLevel === 'number' ? e.values.moodLevel : 0;
-                    const sleepQuality = typeof e.values.sleepQuality === 'number' ? e.values.sleepQuality : 0;
+                    const moodLevel = getOptionalNumber(e.values.moodLevel);
+                    const sleepQuality = getOptionalNumber(e.values.sleepQuality);
                     const activities = Array.isArray(e.values.activities) ? e.values.activities as string[] : [];
                     const journal = typeof e.values.journal === 'string' ? e.values.journal : '';
                     return (
@@ -519,7 +560,7 @@ export default function App() {
                               <div className="w-7 h-7 rounded-full bg-[#E6F0E6] flex items-center justify-center text-[#8FA88B] shadow-inner">
                                 <Smile size={15} />
                               </div>
-                              <span className="text-xs font-semibold text-gray-700">心情 {moodLevel}/10</span>
+                              <span className="text-xs font-semibold text-gray-700">心情 {formatScaleValue(moodLevel)}</span>
                             </div>
                           </div>
                           <button
@@ -535,11 +576,11 @@ export default function App() {
                         <div className="grid grid-cols-2 gap-2 bg-gray-50/50 rounded-2xl p-2.5 text-xs text-gray-500">
                           <div className="flex items-center gap-1">
                             <Moon size={12} className="text-indigo-400" />
-                            <span>睡眠质量：<strong className="text-gray-700">{sleepQuality}/10</strong></span>
+                            <span>睡眠质量：<strong className="text-gray-700">{formatScaleValue(sleepQuality)}</strong></span>
                           </div>
                           <div className="flex items-center gap-1">
                             <Smile size={12} className="text-[#8FA88B]" />
-                            <span>心情等级：<strong className="text-gray-700">{moodLevel}/10</strong></span>
+                            <span>心情：<strong className="text-gray-700">{formatScaleValue(moodLevel)}</strong></span>
                           </div>
                         </div>
 
@@ -839,23 +880,6 @@ export default function App() {
                   onChange={handleImportDataFile}
                   className="hidden"
                 />
-
-                {dataImportStatus && (
-                  <div
-                    className={`rounded-2xl px-3 py-2 text-xs font-medium flex items-start gap-2 ${
-                      dataImportStatus.type === 'success'
-                        ? 'bg-[#E6F0E6]/70 text-[#6E876B]'
-                        : 'bg-rose-50 text-rose-600'
-                    }`}
-                  >
-                    {dataImportStatus.type === 'success' ? (
-                      <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
-                    ) : (
-                      <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                    )}
-                    <span>{dataImportStatus.message}</span>
-                  </div>
-                )}
               </div>
 
               <div className="text-[11px] text-gray-400 text-center leading-relaxed px-4">
@@ -965,6 +989,7 @@ export default function App() {
             onModeChange={setAuthDialogMode}
             onAuthenticated={handleAuthenticated}
             onPasswordChanged={() => setDataStatus('success', '密码已更新。')}
+            onError={(message) => setDataStatus('error', message)}
             onClose={() => setAuthDialogMode(null)}
           />
         )}

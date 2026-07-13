@@ -45,7 +45,7 @@ export const siteContent = {
         id: 'scale',
         title: '量表',
         desc: '1 到 10 分，适合稳定追踪的状态。',
-        examples: ['睡眠质量', '心情等级', '精力', '饮食健康', '工作效率'],
+        examples: ['睡眠质量', '心情', '精力', '饮食健康', '工作效率'],
       },
       {
         id: 'enum',

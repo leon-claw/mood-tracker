@@ -11,11 +11,6 @@ import { INITIAL_DEMO_ENTRIES } from './data/mockData';
 assert.equal(ENTRY_STORAGE_KEY, 'mood_tracker_entries_v4');
 
 assert.deepEqual(createDefaultLogValues(), {
-  sleepQuality: 7,
-  moodLevel: 7,
-  energyLevel: 7,
-  dietHealth: 7,
-  workEfficiency: 7,
   activities: [],
   weather: [],
   social: [],
@@ -43,7 +38,6 @@ assert.deepEqual(
     moodLevel: 10,
     energyLevel: 8,
     dietHealth: 4,
-    workEfficiency: 1,
     activities: ['running'],
     weather: ['sunny'],
     social: ['family', 'party'],

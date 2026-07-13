@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BookOpen, BriefcaseBusiness, Check, Moon, Plus, Salad, Save, Smile, Zap } from 'lucide-react';
 import { FIELD_DEFINITIONS } from '../fieldSchema';
-import { createDefaultLogValues, sanitizeLogValues } from '../logEntry';
+import { sanitizeLogValues } from '../logEntry';
 import { LogEntry, LogValues } from '../types';
 
 interface RecordFormProps {
@@ -23,7 +23,7 @@ const getScaleIcon = (fieldId: string) => {
   return <Smile size={14} className="text-[#8FA88B]" />;
 };
 
-const getInitialValues = (entry?: LogEntry) => entry?.values || createDefaultLogValues();
+const getInitialValues = (entry?: LogEntry): Partial<LogValues> => entry?.values ? { ...entry.values } : {};
 
 export const RecordForm: React.FC<RecordFormProps> = ({
   date,
@@ -35,7 +35,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
   showDateInput = false,
   surface = 'page',
 }) => {
-  const [values, setValues] = useState<LogValues>(() => getInitialValues(entry));
+  const [values, setValues] = useState<Partial<LogValues>>(() => getInitialValues(entry));
   const scaleCardClass = surface === 'drawer'
     ? 'flex flex-col gap-3 bg-gray-50/60 border border-gray-100/60 rounded-2xl p-4'
     : 'flex flex-col gap-3 bg-white border border-[#F2EDE9] rounded-3xl p-5 shadow-xs';
@@ -51,7 +51,17 @@ export const RecordForm: React.FC<RecordFormProps> = ({
   }, [entry, date]);
 
   const setScaleValue = (fieldId: string, value: number) => {
-    setValues((prev) => ({ ...prev, [fieldId]: value }));
+    setValues((prev) => {
+      const currentValue = typeof prev[fieldId] === 'number' ? prev[fieldId] as number : undefined;
+      const nextValues = { ...prev };
+
+      if (currentValue === value) {
+        delete nextValues[fieldId];
+        return nextValues;
+      }
+
+      return { ...nextValues, [fieldId]: value };
+    });
   };
 
   const toggleEnumValue = (fieldId: string, optionId: string) => {
@@ -93,7 +103,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
 
       {FIELD_DEFINITIONS.map((field) => {
         if (field.type === 'scale') {
-          const selectedValue = typeof values[field.id] === 'number' ? values[field.id] as number : 7;
+          const selectedValue = typeof values[field.id] === 'number' ? values[field.id] as number : undefined;
 
           return (
             <div key={field.id} className={scaleCardClass}>
@@ -103,7 +113,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
                   <span>{field.label}</span>
                 </span>
                 <span className="text-sm font-bold text-[#8FA88B] font-mono">
-                  {selectedValue}/10
+                  {selectedValue ? `${selectedValue}/10` : '未选择'}
                 </span>
               </div>
               <div className="grid grid-cols-10 gap-1.5">
