@@ -3,6 +3,7 @@ import {
   ENTRY_STORAGE_KEY,
   createDefaultLogValues,
   createLogEntry,
+  isLogEntryId,
   isLegacyDemoEntries,
   sanitizeLogValues,
 } from './logEntry';
@@ -61,7 +62,7 @@ const entry = createLogEntry('2026-07-05', {
   achievement: '完成健身计划',
 });
 assert.equal(entry.date, '2026-07-05');
-assert.equal(typeof entry.id, 'string');
+assert.equal(isLogEntryId(entry.id), true);
 assert.deepEqual(Object.keys(entry.values), [
   'sleepQuality',
   'moodLevel',

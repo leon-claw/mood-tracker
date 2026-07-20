@@ -14,6 +14,24 @@ const getNumberValue = (entry: LogEntry, field: string) =>
 const getStringValue = (entry: LogEntry, field: string) =>
   typeof entry.values[field] === 'string' ? entry.values[field] as string : '';
 
+export const getAvailableReportMonths = (entries: LogEntry[]) => {
+  const months = new Map<string, { year: number; month: number }>();
+
+  entries.forEach((entry) => {
+    const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(entry.date);
+    if (!match) return;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (month < 1 || month > 12) return;
+    months.set(`${year}-${String(month).padStart(2, '0')}`, { year, month });
+  });
+
+  return [...months.values()].sort((a, b) =>
+    (b.year * 12 + b.month) - (a.year * 12 + a.month)
+  );
+};
+
 export const getMonthEntries = (entries: LogEntry[], year: number, month: number) =>
   entries
     .filter((entry) => {

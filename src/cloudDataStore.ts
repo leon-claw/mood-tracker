@@ -1,5 +1,6 @@
-import { AppExportData } from './dataPortability';
+import { AppExportData, normalizeAppData } from './dataPortability';
 import { LogEntry } from './types';
+import { AppPreferences, normalizeAppPreferences } from '../shared/appPreferences';
 
 export interface AuthUser {
   id: string;
@@ -29,12 +30,23 @@ export interface CloudDataStore {
   upsertEntry(entry: Omit<LogEntry, 'id'> | LogEntry): Promise<LogEntry>;
   deleteEntry(entryId: string): Promise<void>;
   updateUserState(state: Pick<AppExportData, 'points' | 'unlockedItems' | 'isPremiumUnlocked'>): Promise<void>;
+  updatePreferences(preferences: AppPreferences): Promise<AppPreferences>;
 }
 
 export interface CloudDataStoreOptions {
   apiBaseUrl?: string;
   useBearerToken?: boolean;
   tokenStorageKey?: string;
+  onSyncStart?: () => void;
+  onSyncEnd?: () => void;
+  onSyncError?: (error: Error) => void;
+}
+
+class CloudRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'CloudRequestError';
+  }
 }
 
 const parseJson = async <Result>(response: Response): Promise<Result> => {
@@ -42,7 +54,7 @@ const parseJson = async <Result>(response: Response): Promise<Result> => {
 
   if (!response.ok) {
     const message = typeof body?.error?.message === 'string' ? body.error.message : '请求失败，请稍后再试。';
-    throw new Error(message);
+    throw new CloudRequestError(message, response.status);
   }
 
   return body as Result;
@@ -50,7 +62,21 @@ const parseJson = async <Result>(response: Response): Promise<Result> => {
 
 const normalizeApiBaseUrl = (apiBaseUrl?: string) => (apiBaseUrl || '').trim().replace(/\/+$/, '');
 const AUTH_MODE_HEADER = 'X-Mood-Tracker-Auth';
-const DEFAULT_TOKEN_STORAGE_KEY = 'mood_tracker_cloud_token';
+export const CLOUD_AUTH_TOKEN_STORAGE_KEY = 'mood_tracker_cloud_token';
+
+export const hasStoredCloudAuthToken = (
+  storage?: Pick<Storage, 'getItem'>,
+  tokenStorageKey = CLOUD_AUTH_TOKEN_STORAGE_KEY
+) => {
+  const targetStorage = storage || (typeof localStorage === 'undefined' ? null : localStorage);
+  if (!targetStorage) return false;
+
+  try {
+    return Boolean(targetStorage.getItem(tokenStorageKey));
+  } catch {
+    return false;
+  }
+};
 
 const resolveApiUrl = (apiBaseUrl: string, path: string) => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -88,7 +114,7 @@ export const createCloudDataStore = (
 ): CloudDataStore => {
   const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
   const useBearerToken = options.useBearerToken === true;
-  const tokenStorageKey = options.tokenStorageKey || DEFAULT_TOKEN_STORAGE_KEY;
+  const tokenStorageKey = options.tokenStorageKey || CLOUD_AUTH_TOKEN_STORAGE_KEY;
   let memoryToken: string | null = null;
 
   const readAuthToken = () => {
@@ -129,11 +155,16 @@ export const createCloudDataStore = (
       }
     }
 
-    const response = await fetcher(resolveApiUrl(apiBaseUrl, path), {
-      ...init,
-      headers,
-      credentials: useBearerToken ? 'omit' : 'include',
-    });
+    let response: Response;
+    try {
+      response = await fetcher(resolveApiUrl(apiBaseUrl, path), {
+        ...init,
+        headers,
+        credentials: useBearerToken ? 'omit' : 'include',
+      });
+    } catch {
+      throw new Error('无法连接服务器，请检查网络后重试。');
+    }
     return parseJson<Result>(response);
   };
 
@@ -145,6 +176,19 @@ export const createCloudDataStore = (
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+
+  const syncRequest = async <Result>(operation: () => Promise<Result>) => {
+    options.onSyncStart?.();
+    try {
+      return await operation();
+    } catch (error) {
+      const normalizedError = error instanceof Error ? error : new Error('云端同步失败，请稍后再试。');
+      options.onSyncError?.(normalizedError);
+      throw normalizedError;
+    } finally {
+      options.onSyncEnd?.();
+    }
+  };
 
   return {
     getCaptcha: () => request<CaptchaChallenge>('/api/captcha'),
@@ -175,27 +219,45 @@ export const createCloudDataStore = (
       try {
         const response = await request<{ user: AuthUser }>('/api/me');
         return response.user;
-      } catch {
-        return null;
+      } catch (error) {
+        if (error instanceof CloudRequestError && (error.status === 401 || error.status === 403)) {
+          clearAuthToken();
+          return null;
+        }
+        throw error;
       }
     },
     async changePassword(currentPassword, newPassword) {
       await jsonRequest<{ ok: boolean }>('/api/me/password', 'PATCH', { currentPassword, newPassword });
     },
-    getData: () => request<AppExportData>('/api/sync'),
-    replaceData: (data) => jsonRequest<AppExportData>('/api/sync', 'PUT', data),
+    getData: () => syncRequest(async () =>
+      normalizeAppData(await request<unknown>('/api/sync'))
+    ),
+    replaceData: (data) => syncRequest(async () =>
+      normalizeAppData(await jsonRequest<unknown>('/api/sync', 'PUT', data))
+    ),
     async upsertEntry(entry) {
-      const response = await jsonRequest<{ entry: LogEntry }>('/api/entries', 'POST', {
-        date: entry.date,
-        values: entry.values,
+      return syncRequest(async () => {
+        const response = await jsonRequest<{ entry: LogEntry }>('/api/entries', 'POST', {
+          date: entry.date,
+          values: entry.values,
+        });
+        return response.entry;
       });
-      return response.entry;
     },
     async deleteEntry(entryId) {
-      await request<{ ok: boolean }>(`/api/entries/${entryId}`, { method: 'DELETE' });
+      await syncRequest(() => request<{ ok: boolean }>(`/api/entries/${entryId}`, { method: 'DELETE' }));
     },
     async updateUserState(state) {
-      await jsonRequest('/api/user-state', 'PUT', state);
+      await syncRequest(() => jsonRequest('/api/user-state', 'PUT', state));
+    },
+    async updatePreferences(preferences) {
+      const response = await syncRequest(() => jsonRequest<{ preferences: AppPreferences }>(
+        '/api/preferences',
+        'PUT',
+        preferences
+      ));
+      return normalizeAppPreferences(response.preferences);
     },
   };
 };

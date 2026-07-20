@@ -1,11 +1,13 @@
-import { sanitizeLogValues } from './logEntry';
+import { normalizeLogEntryId, sanitizeLogValues } from './logEntry';
 import { LogEntry, LogValues } from './types';
+import { AppPreferences, normalizeAppPreferences } from '../shared/appPreferences';
 
 export interface AppExportData {
   entries: LogEntry[];
   points: number;
   unlockedItems: string[];
   isPremiumUnlocked: boolean;
+  preferences: AppPreferences;
 }
 
 interface ExportEnvelope {
@@ -41,12 +43,26 @@ const normalizeEntries = (value: unknown): LogEntry[] => {
     }
 
     result.push({
-      id: typeof item.id === 'string' ? item.id : `imported-${item.date}-${index}`,
+      id: normalizeLogEntryId(item.id),
       date: item.date,
       values: sanitizeLogValues(item.values as Partial<LogValues>),
     });
     return result;
   }, []);
+};
+
+export const normalizeAppData = (value: unknown): AppExportData => {
+  if (!isRecord(value)) {
+    throw new Error('数据格式不正确。');
+  }
+
+  return {
+    entries: normalizeEntries(value.entries),
+    points: normalizePoints(value.points),
+    unlockedItems: normalizeStringArray(value.unlockedItems),
+    isPremiumUnlocked: value.isPremiumUnlocked === true,
+    preferences: normalizeAppPreferences(value.preferences),
+  };
 };
 
 export const createExportJson = (data: AppExportData) => {
@@ -73,10 +89,5 @@ export const parseImportJson = (json: string): AppExportData => {
     throw new Error('导入文件格式不正确。');
   }
 
-  return {
-    entries: normalizeEntries(parsed.data.entries),
-    points: normalizePoints(parsed.data.points),
-    unlockedItems: normalizeStringArray(parsed.data.unlockedItems),
-    isPremiumUnlocked: parsed.data.isPremiumUnlocked === true,
-  };
+  return normalizeAppData(parsed.data);
 };

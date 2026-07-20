@@ -4,6 +4,7 @@ import { createApp } from '../app';
 import { createExportEnvelope, SyncData } from '../domain/portableData';
 import { MemoryRepository } from '../repositories/memoryRepository';
 import { createApiRouter } from './api';
+import { createDefaultAppPreferences } from '../../../shared/appPreferences';
 
 const repo = new MemoryRepository();
 const app = createApp({
@@ -141,6 +142,10 @@ const syncData: SyncData = {
   points: 500,
   unlockedItems: ['plant_succulent', 'badge_focus'],
   isPremiumUnlocked: true,
+  preferences: {
+    enabledRecordFieldIds: ['sleepQuality', 'moodLevel', 'journal'],
+    reminders: { enabled: true, times: ['08:30', '21:00'] },
+  },
 };
 
 await loggedInAgent.put('/api/sync').send(syncData).expect(200).expect((response) => {
@@ -177,6 +182,39 @@ await loggedInAgent
     assert.deepEqual(response.body.entry.values.activities, ['fitness']);
   });
 
+await loggedInAgent
+  .put('/api/preferences')
+  .send({ enabledRecordFieldIds: ['activities', 'journal'] })
+  .expect(200)
+  .expect((response) => {
+    assert.deepEqual(response.body.preferences, {
+      enabledRecordFieldIds: ['activities', 'journal'],
+      reminders: createDefaultAppPreferences().reminders,
+    });
+  });
+
+await loggedInAgent
+  .put('/api/preferences')
+  .send({
+    enabledRecordFieldIds: ['activities', 'journal'],
+    reminders: { enabled: true, times: ['09:00', '21:30'] },
+  })
+  .expect(200)
+  .expect((response) => {
+    assert.deepEqual(response.body.preferences.reminders, {
+      enabled: true,
+      times: ['09:00', '21:30'],
+    });
+  });
+
+await loggedInAgent
+  .put('/api/preferences')
+  .send({ enabledRecordFieldIds: [] })
+  .expect(400)
+  .expect((response) => {
+    assert.equal(response.body.error.code, 'VALIDATION_ERROR');
+  });
+
 await loggedInAgent.get('/api/export').expect(200).expect((response) => {
   assert.equal(response.body.app, 'mood-tracker');
   assert.equal(response.body.version, 1);
@@ -189,6 +227,7 @@ const replacement = createExportEnvelope({
   points: 0,
   unlockedItems: [],
   isPremiumUnlocked: false,
+  preferences: createDefaultAppPreferences(),
 });
 
 await loggedInAgent.post('/api/import').send(replacement).expect(200).expect((response) => {

@@ -1,5 +1,6 @@
 import { ServerLogEntry, SyncData } from '../domain/portableData';
 import { ServerLogValues } from '../domain/logValues';
+import { AppPreferences } from '../../../shared/appPreferences';
 
 export interface UserRecord {
   id: string;
@@ -36,4 +37,5 @@ export interface AppRepository {
   upsertEntry(userId: string, date: string, values: ServerLogValues): Promise<ServerLogEntry>;
   deleteEntry(userId: string, entryId: string): Promise<void>;
   updateUserState(userId: string, state: UserStateRecord): Promise<UserStateRecord>;
+  updatePreferences(userId: string, preferences: AppPreferences): Promise<AppPreferences>;
 }

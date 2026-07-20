@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  getAvailableReportMonths,
   getMoodDistributionData,
   getMoodFlowData,
   getSleepMoodData,
@@ -53,5 +54,19 @@ const partialEntries: LogEntry[] = [
 assert.equal(getMoodFlowData(partialEntries, 2026, 7).length, 1);
 assert.equal(getMoodDistributionData(partialEntries, 2026, 7).reduce((sum, bucket) => sum + bucket.count, 0), 1);
 assert.equal(getSleepMoodData(partialEntries, 2026, 7).reduce((sum, item) => sum + item.count, 0), 0);
+
+const availableMonths = getAvailableReportMonths([
+  ...partialEntries,
+  { ...partialEntries[0], id: 'march', date: '2026-03-12' },
+  { ...partialEntries[0], id: 'previous-year', date: '2025-12-31' },
+  { ...partialEntries[0], id: 'duplicate-month', date: '2026-07-18' },
+  { ...partialEntries[0], id: 'invalid-date', date: 'not-a-date' },
+]);
+assert.deepEqual(availableMonths, [
+  { year: 2026, month: 7 },
+  { year: 2026, month: 3 },
+  { year: 2025, month: 12 },
+]);
+assert.deepEqual(getAvailableReportMonths([]), []);
 
 console.log('report data tests passed');

@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ChangeEvent } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
+import type { PluginListenerHandle } from '@capacitor/core';
 import { LogEntry } from './types';
 import { MoodFlowChart } from './components/MoodFlowChart';
 import { MoodDistribution } from './components/MoodDistribution';
@@ -11,9 +14,30 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { AuthDialog, AuthDialogMode } from './components/AuthDialog';
 import { DataSourceChoiceDialog } from './components/DataSourceChoiceDialog';
 import { UpdatePrompt } from './components/UpdatePrompt';
-import { AppTab, getHashForTab, getTabFromHash } from './routes';
+import { RecordFieldSettingsPage } from './components/RecordFieldSettingsPage';
+import { ReminderSettingsPage } from './components/ReminderSettingsPage';
+import {
+  CloudLoadingOverlay,
+  GlobalToast,
+  SyncStatusIcon,
+  ToastMessage,
+} from './components/SyncFeedback';
+import {
+  AppTab,
+  getHashForTab,
+  getTabFromHash,
+  isRecordFieldSettingsHash,
+  isReminderSettingsHash,
+  recordFieldSettingsRoute,
+  reminderSettingsRoute,
+} from './routes';
 import { getActivityOption } from './fieldSchema';
-import { createExportJson, parseImportJson } from './dataPortability';
+import {
+  AppExportData,
+  createExportJson,
+  normalizeAppData,
+  parseImportJson,
+} from './dataPortability';
 import { createLogEntry } from './logEntry';
 import {
   clearLocalAppData,
@@ -21,10 +45,26 @@ import {
   readLocalAppData,
   writeLocalAppData,
 } from './localDataStore';
-import { AuthUser, createCloudDataStore } from './cloudDataStore';
+import { AuthUser, createCloudDataStore, hasStoredCloudAuthToken } from './cloudDataStore';
 import { appConfig } from './appConfig';
+import { formatLocalDate, getCurrentDateContext, YearMonth } from './dateContext';
+import { getAvailableReportMonths } from './reportData';
 import { fetchUpdateManifest, isVersionNewer, UpdateManifest } from './updateCheck';
 import { exportJsonFile } from './androidExport';
+import {
+  AppPreferences,
+  normalizeAppPreferences,
+  RecordFieldId,
+} from '../shared/appPreferences';
+import {
+  addCheckInReminderActionListener,
+  getReminderExactAlarmPermissionState,
+  getReminderPermissionState,
+  ReminderPermissionState,
+  requestReminderExactAlarmPermission,
+  requestReminderPermission,
+  syncCheckInReminderSchedule,
+} from './reminderService';
 
 import {
   Calendar,
@@ -40,8 +80,6 @@ import {
   Database,
   Download,
   Upload,
-  CheckCircle2,
-  AlertCircle,
   Cloud,
   KeyRound,
   LogIn,
@@ -49,27 +87,14 @@ import {
   UserPlus,
   Smartphone,
   ExternalLink,
+  SlidersHorizontal,
+  ChevronRight,
+  BellRing,
 } from 'lucide-react';
 
 type DataMode = 'local' | 'cloud';
-type YearMonth = { year: number; month: number };
-type ToastState = { type: 'success' | 'error'; message: string } | null;
-
 const ANDROID_RELEASES_URL = 'https://github.com/leon-claw/mood-tracker/releases';
-const cloudStore = createCloudDataStore(fetch, {
-  apiBaseUrl: appConfig.apiBaseUrl,
-  useBearerToken: appConfig.isNativeAndroid,
-});
-
-const getCurrentYearMonth = (): YearMonth => {
-  const now = new Date();
-  return { year: now.getFullYear(), month: now.getMonth() + 1 };
-};
-
-const shiftYearMonth = (year: number, month: number, offset: number): YearMonth => {
-  const shifted = new Date(year, month - 1 + offset, 1);
-  return { year: shifted.getFullYear(), month: shifted.getMonth() + 1 };
-};
+export const CLOUD_SYNC_BATCH_DELAY_MS = 10_000;
 
 const formatYearMonth = ({ year, month }: YearMonth) => `${year}年 ${month}月`;
 
@@ -77,57 +102,92 @@ const getOptionalNumber = (value: unknown) => typeof value === 'number' ? value 
 const formatScaleValue = (value: number | null) => value === null ? '未记录' : `${value}/10`;
 
 const applyAppData = (
-  data: ReturnType<typeof readLocalAppData>,
+  data: unknown,
   setters: {
     setEntries: (entries: LogEntry[]) => void;
     setPoints: (points: number) => void;
     setUnlockedItems: (items: string[]) => void;
     setIsPremiumUnlocked: (value: boolean) => void;
+    setPreferences: (preferences: AppPreferences) => void;
   }
 ) => {
-  setters.setEntries(data.entries);
-  setters.setPoints(data.points);
-  setters.setUnlockedItems(data.unlockedItems);
-  setters.setIsPremiumUnlocked(data.isPremiumUnlocked);
+  const normalized = normalizeAppData(data);
+  setters.setEntries(normalized.entries);
+  setters.setPoints(normalized.points);
+  setters.setUnlockedItems(normalized.unlockedItems);
+  setters.setIsPremiumUnlocked(normalized.isPremiumUnlocked);
+  setters.setPreferences(normalized.preferences);
 };
 
 export default function App() {
   // 1. State Initialization
+  const isNativeMobile = Capacitor.isNativePlatform();
+  const showCloudAccount = appConfig.showCloudAccount;
   const initialLocalData = useMemo(() => readLocalAppData(), []);
-  const initialYearMonth = useMemo(() => getCurrentYearMonth(), []);
+  const initialDateContext = useMemo(() => getCurrentDateContext(), []);
+  const hasInitialCloudToken = useMemo(
+    () => showCloudAccount && hasStoredCloudAuthToken(),
+    [showCloudAccount]
+  );
   const [entries, setEntries] = useState<LogEntry[]>(() => initialLocalData.entries);
+  const [currentDate, setCurrentDate] = useState(() => initialDateContext.date);
 
   const [activeTab, setActiveTab] = useState<AppTab>(() => getTabFromHash(window.location.hash));
   const [reportRange, setReportRange] = useState<'month' | 'year'>('month');
-  const [dataMode, setDataMode] = useState<DataMode>('local');
+  const [dataMode, setDataMode] = useState<DataMode>(() => hasInitialCloudToken ? 'cloud' : 'local');
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authDialogMode, setAuthDialogMode] = useState<AuthDialogMode | null>(null);
   const [pendingSourceUser, setPendingSourceUser] = useState<AuthUser | null>(null);
   const [isSourceChoiceBusy, setIsSourceChoiceBusy] = useState(false);
   const [updateManifest, setUpdateManifest] = useState<UpdateManifest | null>(null);
-  const showCloudAccount = appConfig.showCloudAccount;
 
   // Month and Year selector states
-  const [selectedYear, setSelectedYear] = useState<number>(() => initialYearMonth.year);
-  const [selectedMonth, setSelectedMonth] = useState<number>(() => initialYearMonth.month);
+  const [selectedYear, setSelectedYear] = useState<number>(() => initialDateContext.year);
+  const [selectedMonth, setSelectedMonth] = useState<number>(() => initialDateContext.month);
   const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
-  const [calendarYear, setCalendarYear] = useState<number>(() => initialYearMonth.year);
-  const [calendarMonth, setCalendarMonth] = useState<number>(() => initialYearMonth.month);
+  const [calendarYear, setCalendarYear] = useState<number>(() => initialDateContext.year);
+  const [calendarMonth, setCalendarMonth] = useState<number>(() => initialDateContext.month);
   const [calendarEditorDate, setCalendarEditorDate] = useState<string | null>(null);
 
   // Gamification & Unlock states
   const [points, setPoints] = useState<number>(() => initialLocalData.points);
   const [unlockedItems, setUnlockedItems] = useState<string[]>(() => initialLocalData.unlockedItems);
   const [isPremiumUnlocked, setIsPremiumUnlocked] = useState<boolean>(() => initialLocalData.isPremiumUnlocked);
+  const [preferences, setPreferences] = useState<AppPreferences>(() => initialLocalData.preferences);
+  const [isRecordFieldSettingsOpen, setIsRecordFieldSettingsOpen] = useState(
+    () => isRecordFieldSettingsHash(window.location.hash)
+  );
+  const [isReminderSettingsOpen, setIsReminderSettingsOpen] = useState(
+    () => isNativeMobile && isReminderSettingsHash(window.location.hash)
+  );
+  const [reminderPermissionState, setReminderPermissionState] = useState<ReminderPermissionState>('unknown');
+  const [reminderExactAlarmState, setReminderExactAlarmState] = useState<ReminderPermissionState>('unknown');
+  const [isReminderPermissionBusy, setIsReminderPermissionBusy] = useState(false);
+  const [isReminderExactAlarmBusy, setIsReminderExactAlarmBusy] = useState(false);
   // Daily Logging modal state
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  const [toast, setToast] = useState<ToastState>(null);
+  const [toast, setToast] = useState<ToastMessage>(null);
+  const [syncRequestCount, setSyncRequestCount] = useState(0);
+  const [isInitialCloudLoading, setIsInitialCloudLoading] = useState(() => hasInitialCloudToken);
+
+  const cloudStore = useMemo(() => createCloudDataStore(fetch, {
+    apiBaseUrl: appConfig.apiBaseUrl,
+    useBearerToken: true,
+    onSyncStart: () => setSyncRequestCount((count) => count + 1),
+    onSyncEnd: () => setSyncRequestCount((count) => Math.max(0, count - 1)),
+    onSyncError: (error) => setToast({ type: 'error', message: error.message }),
+  }), []);
+  const isCloudSyncing = syncRequestCount > 0;
 
   // Search & Filter state for Log history tab
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [selectedMoodFilter, setSelectedMoodFilter] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; closeCalendarEditor?: boolean } | null>(null);
   const calendarTransitionHasMounted = useRef(false);
+  const cloudBatchTimerRef = useRef<number | null>(null);
+  const dataModeRef = useRef<DataMode>(dataMode);
+  const appDataRef = useRef<AppExportData>(initialLocalData);
+  const preferencesRef = useRef(preferences);
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   // Save states to LocalStorage only while the app is in guest/local mode.
@@ -138,40 +198,124 @@ export default function App() {
       points,
       unlockedItems,
       isPremiumUnlocked,
+      preferences,
     });
-  }, [dataMode, entries, points, unlockedItems, isPremiumUnlocked]);
+  }, [dataMode, entries, points, unlockedItems, isPremiumUnlocked, preferences]);
+
+  useEffect(() => {
+    dataModeRef.current = dataMode;
+    const currentData = { entries, points, unlockedItems, isPremiumUnlocked, preferences };
+    appDataRef.current = currentData;
+    preferencesRef.current = preferences;
+  }, [dataMode, entries, points, unlockedItems, isPremiumUnlocked, preferences]);
+
+  useEffect(() => () => {
+    if (cloudBatchTimerRef.current !== null) {
+      window.clearTimeout(cloudBatchTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
 
     const restoreSession = async () => {
-      if (!showCloudAccount) return;
-      const user = await cloudStore.getMe();
-      if (!user || isCancelled) return;
-
-      setAuthUser(user);
-      if (hasLocalBusinessData()) {
-        setPendingSourceUser(user);
+      if (!showCloudAccount || !hasInitialCloudToken) {
+        setIsInitialCloudLoading(false);
         return;
       }
 
-      const cloudData = await cloudStore.getData();
-      if (isCancelled) return;
-      applyAppData(cloudData, {
-        setEntries,
-        setPoints,
-        setUnlockedItems,
-        setIsPremiumUnlocked,
-      });
-      clearLocalAppData();
-      setDataMode('cloud');
+      try {
+        const user = await cloudStore.getMe();
+        if (isCancelled) return;
+        if (!user) {
+          setAuthUser(null);
+          setDataMode('local');
+          return;
+        }
+
+        setAuthUser(user);
+        const cloudData = await cloudStore.getData();
+        if (isCancelled) return;
+        applyAppData(cloudData, {
+          setEntries,
+          setPoints,
+          setUnlockedItems,
+          setIsPremiumUnlocked,
+          setPreferences,
+        });
+        clearLocalAppData();
+        setDataMode('cloud');
+      } catch (error) {
+        if (!isCancelled) {
+          setToast({
+            type: 'error',
+            message: error instanceof Error ? error.message : '云端数据拉取失败，请稍后再试。',
+          });
+        }
+      } finally {
+        if (!isCancelled) setIsInitialCloudLoading(false);
+      }
     };
 
     void restoreSession();
     return () => {
       isCancelled = true;
     };
-  }, [showCloudAccount]);
+  }, [cloudStore, hasInitialCloudToken, showCloudAccount]);
+
+  useEffect(() => {
+    let isDisposed = false;
+    let nativeListener: PluginListenerHandle | null = null;
+
+    const refreshDateContext = () => {
+      const next = getCurrentDateContext();
+      setCurrentDate(next.date);
+      setSelectedYear(next.year);
+      setSelectedMonth(next.month);
+      setCalendarYear(next.year);
+      setCalendarMonth(next.month);
+      setIsMonthDropdownOpen(false);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshDateContext();
+    };
+
+    refreshDateContext();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', refreshDateContext);
+
+    if (isNativeMobile) {
+      void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+        if (!isActive) return;
+        refreshDateContext();
+        void syncCheckInReminderSchedule(preferencesRef.current.reminders).catch((error) => {
+          setToast({
+            type: 'error',
+            message: error instanceof Error ? error.message : '打卡提醒更新失败，请稍后再试。',
+          });
+        });
+        if (isReminderSettingsHash(window.location.hash)) {
+          void getReminderPermissionState()
+            .then(setReminderPermissionState)
+            .catch(() => undefined);
+          void getReminderExactAlarmPermissionState()
+            .then(setReminderExactAlarmState)
+            .catch(() => undefined);
+        }
+      }).then((listener) => {
+        if (isDisposed) void listener.remove();
+        else nativeListener = listener;
+      });
+    }
+
+    return () => {
+      isDisposed = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', refreshDateContext);
+      if (nativeListener) void nativeListener.remove();
+    };
+  }, [isNativeMobile]);
 
   useEffect(() => {
     if (!window.location.hash) {
@@ -179,12 +323,93 @@ export default function App() {
     }
 
     const handleHashChange = () => {
+      if (!isNativeMobile && isReminderSettingsHash(window.location.hash)) {
+        window.history.replaceState(null, '', getHashForTab('profile'));
+        setActiveTab('profile');
+        setIsRecordFieldSettingsOpen(false);
+        setIsReminderSettingsOpen(false);
+        return;
+      }
       setActiveTab(getTabFromHash(window.location.hash));
+      setIsRecordFieldSettingsOpen(isRecordFieldSettingsHash(window.location.hash));
+      setIsReminderSettingsOpen(isNativeMobile && isReminderSettingsHash(window.location.hash));
     };
 
+    handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [isNativeMobile]);
+
+  useEffect(() => {
+    if (!isNativeMobile || isInitialCloudLoading) return;
+
+    let isCancelled = false;
+    void syncCheckInReminderSchedule(preferences.reminders).catch((error) => {
+      if (!isCancelled) {
+        setToast({
+          type: 'error',
+          message: error instanceof Error ? error.message : '打卡提醒更新失败，请稍后再试。',
+        });
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isInitialCloudLoading, isNativeMobile, preferences.reminders]);
+
+  useEffect(() => {
+    if (!isNativeMobile || !isReminderSettingsOpen) return;
+
+    let isCancelled = false;
+    void Promise.all([
+      getReminderPermissionState(),
+      getReminderExactAlarmPermissionState(),
+    ])
+      .then(([displayState, exactAlarmState]) => {
+        if (isCancelled) return;
+        setReminderPermissionState(displayState);
+        setReminderExactAlarmState(exactAlarmState);
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setToast({
+            type: 'error',
+            message: error instanceof Error ? error.message : '无法读取系统通知权限。',
+          });
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isNativeMobile, isReminderSettingsOpen]);
+
+  useEffect(() => {
+    if (!isNativeMobile) return;
+
+    let isDisposed = false;
+    let listener: PluginListenerHandle | null = null;
+    void addCheckInReminderActionListener(() => {
+      setCalendarEditorDate(null);
+      window.location.hash = getHashForTab('log');
+      setIsLogModalOpen(true);
+    }).then((handle) => {
+      if (!handle) return;
+      if (isDisposed) void handle.remove();
+      else listener = handle;
+    }).catch((error) => {
+      setToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : '无法响应打卡提醒。',
+      });
+    });
+
+    return () => {
+      isDisposed = true;
+      if (listener) void listener.remove();
+    };
+  }, [isNativeMobile]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -231,24 +456,55 @@ export default function App() {
     window.location.hash = nextHash;
   };
 
+  const navigateToRecordFieldSettings = () => {
+    window.location.hash = recordFieldSettingsRoute;
+  };
+
+  const navigateToReminderSettings = () => {
+    if (isNativeMobile) window.location.hash = reminderSettingsRoute;
+  };
+
   const getCurrentAppData = () => ({
     entries,
     points,
     unlockedItems,
     isPremiumUnlocked,
+    preferences,
   });
 
   const setDataStatus = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
   };
 
-  const syncUserState = async (nextPoints = points, nextUnlockedItems = unlockedItems, nextPremium = isPremiumUnlocked) => {
-    if (dataMode !== 'cloud') return;
-    await cloudStore.updateUserState({
-      points: nextPoints,
-      unlockedItems: nextUnlockedItems,
-      isPremiumUnlocked: nextPremium,
-    });
+  const cancelScheduledCloudSync = () => {
+    if (cloudBatchTimerRef.current === null) return;
+    window.clearTimeout(cloudBatchTimerRef.current);
+    cloudBatchTimerRef.current = null;
+  };
+
+  const scheduleCloudSync = () => {
+    if (dataModeRef.current !== 'cloud' || cloudBatchTimerRef.current !== null) return;
+
+    cloudBatchTimerRef.current = window.setTimeout(() => {
+      cloudBatchTimerRef.current = null;
+      if (dataModeRef.current !== 'cloud') return;
+
+      const currentData = appDataRef.current;
+      const batchSnapshot: AppExportData = {
+        entries: currentData.entries.map((entry) => ({
+          ...entry,
+          values: { ...entry.values },
+        })),
+        points: currentData.points,
+        unlockedItems: [...currentData.unlockedItems],
+        isPremiumUnlocked: currentData.isPremiumUnlocked,
+        preferences: normalizeAppPreferences(currentData.preferences),
+      };
+
+      void cloudStore.replaceData(batchSnapshot).catch(() => {
+        // The cloud store reports the failure through the global toast.
+      });
+    }, CLOUD_SYNC_BATCH_DELAY_MS);
   };
 
   const handleAuthenticated = async (user: AuthUser) => {
@@ -258,6 +514,7 @@ export default function App() {
       return;
     }
 
+    setIsInitialCloudLoading(true);
     try {
       const cloudData = await cloudStore.getData();
       applyAppData(cloudData, {
@@ -265,17 +522,21 @@ export default function App() {
         setPoints,
         setUnlockedItems,
         setIsPremiumUnlocked,
+        setPreferences,
       });
       clearLocalAppData();
       setDataMode('cloud');
       setDataStatus('success', '已进入云端同步模式。');
-    } catch (error) {
-      setDataStatus('error', error instanceof Error ? error.message : '云端数据读取失败。');
+    } catch {
+      // The cloud store forwards backend errors to the global toast.
+    } finally {
+      setIsInitialCloudLoading(false);
     }
   };
 
   const handleUseLocalData = async () => {
     setIsSourceChoiceBusy(true);
+    cancelScheduledCloudSync();
     try {
       const uploaded = await cloudStore.replaceData(readLocalAppData());
       applyAppData(uploaded, {
@@ -283,13 +544,14 @@ export default function App() {
         setPoints,
         setUnlockedItems,
         setIsPremiumUnlocked,
+        setPreferences,
       });
       clearLocalAppData();
       setDataMode('cloud');
       setPendingSourceUser(null);
       setDataStatus('success', '本地数据已上传并覆盖云端。');
-    } catch (error) {
-      setDataStatus('error', error instanceof Error ? error.message : '上传本地数据失败。');
+    } catch {
+      // The cloud store forwards backend errors to the global toast.
     } finally {
       setIsSourceChoiceBusy(false);
     }
@@ -297,6 +559,7 @@ export default function App() {
 
   const handleUseCloudData = async () => {
     setIsSourceChoiceBusy(true);
+    cancelScheduledCloudSync();
     try {
       const cloudData = await cloudStore.getData();
       applyAppData(cloudData, {
@@ -304,91 +567,89 @@ export default function App() {
         setPoints,
         setUnlockedItems,
         setIsPremiumUnlocked,
+        setPreferences,
       });
       clearLocalAppData();
       setDataMode('cloud');
       setPendingSourceUser(null);
       setDataStatus('success', '已使用云端数据，并清空本地记录。');
-    } catch (error) {
-      setDataStatus('error', error instanceof Error ? error.message : '云端数据读取失败。');
+    } catch {
+      // The cloud store forwards backend errors to the global toast.
     } finally {
       setIsSourceChoiceBusy(false);
     }
   };
 
   const handleCancelSourceChoice = async () => {
-    await cloudStore.logout();
-    setAuthUser(null);
-    setPendingSourceUser(null);
-    setDataMode('local');
+    try {
+      await cloudStore.logout();
+      setAuthUser(null);
+      setPendingSourceUser(null);
+      setDataMode('local');
+    } catch (error) {
+      setDataStatus('error', error instanceof Error ? error.message : '退出登录失败，请稍后再试。');
+    }
   };
 
   const handleLogout = async () => {
-    await cloudStore.logout();
-    setAuthUser(null);
-    setDataMode('local');
-    clearLocalAppData();
-    const emptyData = readLocalAppData();
-    applyAppData(emptyData, {
-      setEntries,
-      setPoints,
-      setUnlockedItems,
-      setIsPremiumUnlocked,
-    });
-    setDataStatus('success', '已退出登录，当前回到本地模式。');
+    cancelScheduledCloudSync();
+    try {
+      await cloudStore.logout();
+      setAuthUser(null);
+      setDataMode('local');
+      clearLocalAppData();
+      const emptyData = readLocalAppData();
+      applyAppData(emptyData, {
+        setEntries,
+        setPoints,
+        setUnlockedItems,
+        setIsPremiumUnlocked,
+        setPreferences,
+      });
+      setDataStatus('success', '已退出登录，当前回到本地模式。');
+    } catch (error) {
+      setDataStatus('error', error instanceof Error ? error.message : '退出登录失败，请稍后再试。');
+    }
   };
 
-  // Handle saving new or updated log entry
-  const handleSaveEntry = async (newEntryData: Omit<LogEntry, 'id'>) => {
-    const existingIndex = entries.findIndex((e) => e.date === newEntryData.date);
-    let updatedEntries = [...entries];
-    let savedEntry: LogEntry | null = null;
+  // Apply record changes immediately, then let the shared cloud batch persist them.
+  const handleSaveEntry = (newEntryData: Omit<LogEntry, 'id'>) => {
+    const currentData = appDataRef.current;
+    const existingEntry = currentData.entries.find((entry) => entry.date === newEntryData.date);
+    const optimisticEntry = existingEntry
+      ? { ...existingEntry, ...newEntryData }
+      : createLogEntry(newEntryData.date, newEntryData.values);
+    const existingIndex = currentData.entries.findIndex((entry) => entry.date === newEntryData.date);
+    const nextEntries = [...currentData.entries];
+    if (existingIndex === -1) nextEntries.push(optimisticEntry);
+    else nextEntries[existingIndex] = optimisticEntry;
 
-    try {
-      if (dataMode === 'cloud') {
-        savedEntry = await cloudStore.upsertEntry(newEntryData);
-      }
-
-      if (existingIndex > -1) {
-        // Update existing
-        updatedEntries[existingIndex] = savedEntry || {
-          ...entries[existingIndex],
-          ...newEntryData,
-        };
-      } else {
-        // Create new
-        const newEntry = savedEntry || createLogEntry(newEntryData.date, newEntryData.values);
-        updatedEntries.push(newEntry);
-        const nextPoints = points + 50;
-        setPoints(nextPoints);
-        await syncUserState(nextPoints);
-      }
-
-      setEntries(updatedEntries);
-    } catch (error) {
-      setDataStatus('error', error instanceof Error ? error.message : '保存记录失败，请稍后再试。');
-    }
+    const nextPoints = existingEntry ? currentData.points : currentData.points + 50;
+    appDataRef.current = {
+      ...currentData,
+      entries: nextEntries,
+      points: nextPoints,
+    };
+    setEntries(nextEntries);
+    if (!existingEntry) setPoints(nextPoints);
+    scheduleCloudSync();
   };
 
   const requestDeleteEntry = (id: string, options?: { closeCalendarEditor?: boolean }) => {
     setPendingDelete({ id, closeCalendarEditor: options?.closeCalendarEditor });
   };
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = () => {
     if (!pendingDelete) return;
+    const deleteRequest = pendingDelete;
+    const currentData = appDataRef.current;
+    const nextEntries = currentData.entries.filter((entry) => entry.id !== deleteRequest.id);
 
-    try {
-      if (dataMode === 'cloud') {
-        await cloudStore.deleteEntry(pendingDelete.id);
-      }
-      setEntries((prev) => prev.filter((entry) => entry.id !== pendingDelete.id));
-      if (pendingDelete.closeCalendarEditor) {
-        setCalendarEditorDate(null);
-      }
-      setPendingDelete(null);
-    } catch (error) {
-      setDataStatus('error', error instanceof Error ? error.message : '删除失败，请稍后再试。');
-    }
+    appDataRef.current = { ...currentData, entries: nextEntries };
+    setEntries(nextEntries);
+    if (deleteRequest.closeCalendarEditor) setCalendarEditorDate(null);
+    setPendingDelete(null);
+    scheduleCloudSync();
   };
 
   const handleExportData = async () => {
@@ -396,7 +657,7 @@ export default function App() {
     try {
       await exportJsonFile({
         json,
-        filename: `mood-tracker-export-${new Date().toISOString().slice(0, 10)}.json`,
+        filename: `mood-tracker-export-${formatLocalDate()}.json`,
       });
       setDataStatus('success', '已导出 JSON 备份。');
     } catch (error) {
@@ -411,12 +672,14 @@ export default function App() {
 
     try {
       const imported = parseImportJson(await file.text());
+      cancelScheduledCloudSync();
       const nextData = dataMode === 'cloud' ? await cloudStore.replaceData(imported) : imported;
       applyAppData(nextData, {
         setEntries,
         setPoints,
         setUnlockedItems,
         setIsPremiumUnlocked,
+        setPreferences,
       });
       setDataStatus('success', `已导入 ${imported.entries.length} 条记录。`);
     } catch (error) {
@@ -424,24 +687,145 @@ export default function App() {
     }
   };
 
+  const handleToggleRecordField = (fieldId: RecordFieldId) => {
+    const previousPreferences = preferencesRef.current;
+    const isEnabled = previousPreferences.enabledRecordFieldIds.includes(fieldId);
+    if (isEnabled && previousPreferences.enabledRecordFieldIds.length === 1) {
+      setDataStatus('error', '至少保留一个记录模块。');
+      return;
+    }
+
+    const nextPreferences = normalizeAppPreferences({
+      ...previousPreferences,
+      enabledRecordFieldIds: isEnabled
+        ? previousPreferences.enabledRecordFieldIds.filter((id) => id !== fieldId)
+        : [...previousPreferences.enabledRecordFieldIds, fieldId],
+    });
+    preferencesRef.current = nextPreferences;
+    appDataRef.current = {
+      ...appDataRef.current,
+      preferences: nextPreferences,
+    };
+    setPreferences(nextPreferences);
+    scheduleCloudSync();
+  };
+
+  const commitPreferences = (nextPreferences: AppPreferences) => {
+    preferencesRef.current = nextPreferences;
+    appDataRef.current = {
+      ...appDataRef.current,
+      preferences: nextPreferences,
+    };
+    setPreferences(nextPreferences);
+    scheduleCloudSync();
+  };
+
+  const handleToggleReminders = async (enabled: boolean) => {
+    const previousPreferences = preferencesRef.current;
+    if (!enabled) {
+      commitPreferences(normalizeAppPreferences({
+        ...previousPreferences,
+        reminders: { ...previousPreferences.reminders, enabled: false },
+      }));
+      return;
+    }
+
+    if (previousPreferences.reminders.times.length === 0) {
+      setDataStatus('error', '请先添加一个提醒时间。');
+      return;
+    }
+
+    setIsReminderPermissionBusy(true);
+    try {
+      const permission = await requestReminderPermission();
+      setReminderPermissionState(permission);
+      if (permission !== 'granted') {
+        setDataStatus('error', '通知权限未开启，暂时无法启用提醒。');
+        return;
+      }
+
+      const exactAlarmPermission = await getReminderExactAlarmPermissionState();
+      setReminderExactAlarmState(exactAlarmPermission);
+
+      commitPreferences(normalizeAppPreferences({
+        ...previousPreferences,
+        reminders: { ...previousPreferences.reminders, enabled: true },
+      }));
+      if (exactAlarmPermission === 'denied') {
+        setDataStatus('error', '每日提醒已开启，但系统可能延迟，请继续开启精确提醒权限。');
+      }
+    } catch (error) {
+      setDataStatus('error', error instanceof Error ? error.message : '通知权限申请失败，请稍后再试。');
+    } finally {
+      setIsReminderPermissionBusy(false);
+    }
+  };
+
+  const handleRequestReminderExactAlarmPermission = async () => {
+    setIsReminderExactAlarmBusy(true);
+    try {
+      const permission = await requestReminderExactAlarmPermission();
+      setReminderExactAlarmState(permission);
+      if (permission !== 'granted') {
+        setDataStatus('error', '精确提醒权限未开启，系统可能延迟通知。');
+        return;
+      }
+
+      await syncCheckInReminderSchedule(preferencesRef.current.reminders);
+      setDataStatus('success', '精确提醒已开启，提醒时间已重新登记。');
+    } catch (error) {
+      setDataStatus('error', error instanceof Error ? error.message : '无法开启精确提醒权限。');
+    } finally {
+      setIsReminderExactAlarmBusy(false);
+    }
+  };
+
+  const handleAddReminderTime = (time: string) => {
+    const previousPreferences = preferencesRef.current;
+    if (!time || previousPreferences.reminders.times.includes(time)) return;
+    commitPreferences(normalizeAppPreferences({
+      ...previousPreferences,
+      reminders: {
+        ...previousPreferences.reminders,
+        times: [...previousPreferences.reminders.times, time],
+      },
+    }));
+  };
+
+  const handleRemoveReminderTime = (time: string) => {
+    const previousPreferences = preferencesRef.current;
+    commitPreferences(normalizeAppPreferences({
+      ...previousPreferences,
+      reminders: {
+        ...previousPreferences.reminders,
+        times: previousPreferences.reminders.times.filter((item) => item !== time),
+      },
+    }));
+  };
+
   const todayEntry = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    return entries.find((entry) => entry.date === todayStr);
-  }, [entries]);
+    return entries.find((entry) => entry.date === currentDate);
+  }, [currentDate, entries]);
 
   const calendarEditorEntry = useMemo(
     () => entries.find((entry) => entry.date === calendarEditorDate),
     [entries, calendarEditorDate]
   );
   const disableCalendarInitialAnimation = activeTab === 'calendar' && !calendarTransitionHasMounted.current;
+  const isSecondarySettingsOpen = isRecordFieldSettingsOpen || isReminderSettingsOpen;
 
-  const monthOptions = useMemo(
-    () => [0, -1, -2].map((offset) => {
-      const yearMonth = shiftYearMonth(initialYearMonth.year, initialYearMonth.month, offset);
-      return { ...yearMonth, label: formatYearMonth(yearMonth) };
-    }),
-    [initialYearMonth.month, initialYearMonth.year]
-  );
+  const monthOptions = useMemo(() => {
+    const availableMonths = getAvailableReportMonths(entries);
+    const currentYearMonth = getCurrentDateContext(new Date(`${currentDate}T12:00:00`));
+    const months = availableMonths.length > 0
+      ? availableMonths
+      : [{ year: currentYearMonth.year, month: currentYearMonth.month }];
+
+    return months.map((yearMonth) => ({
+      ...yearMonth,
+      label: formatYearMonth(yearMonth),
+    }));
+  }, [currentDate, entries]);
 
   return (
     <div id="app-viewport-wrapper" className="h-dvh overflow-hidden bg-[#EAE7E2] flex items-center justify-center p-0 sm:pt-6 sm:pb-0 md:pt-10">
@@ -453,29 +837,16 @@ export default function App() {
         {/* Phone Speaker/Camera Notch decorator on desktop */}
         <div className="hidden sm:block absolute top-2 left-1/2 -translate-x-1/2 w-24 h-4 bg-white rounded-full border border-[#F2EDE9] z-40"></div>
 
-        {toast && (
-          <div id="global-toast" className="absolute left-5 right-5 top-5 z-[70] pointer-events-none">
-            <div
-              className={`mx-auto flex w-full items-start gap-2 rounded-2xl border px-3.5 py-3 text-xs font-semibold shadow-lg backdrop-blur-md ${
-                toast.type === 'success'
-                  ? 'border-[#D8E7D6] bg-white/95 text-[#6E876B]'
-                  : 'border-rose-100 bg-white/95 text-rose-600'
-              }`}
-              role="status"
-              aria-live="polite"
-            >
-              {toast.type === 'success' ? (
-                <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-              ) : (
-                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              )}
-              <span className="leading-relaxed">{toast.message}</span>
-            </div>
-          </div>
-        )}
+        <GlobalToast toast={toast} />
+        <CloudLoadingOverlay isVisible={isInitialCloudLoading} />
 
         {/* Scrollable Content Pane */}
-        <div id="main-scroll-pane" className="relative flex-1 overflow-y-auto pt-8 pb-24 px-5 scrollbar-none">
+        <div
+          id="main-scroll-pane"
+          className={`relative flex-1 overflow-y-auto pt-8 px-5 scrollbar-none ${
+            isSecondarySettingsOpen ? 'pb-8' : 'pb-24'
+          }`}
+        >
           
           {/* TAB 1: LOG HISTORY (日历打卡历史) */}
           {activeTab === 'log' && (
@@ -483,6 +854,7 @@ export default function App() {
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-2xl font-bold text-[#4A4540] flex items-center gap-2">
                   <span>打卡日志</span>
+                  <SyncStatusIcon isSyncing={isCloudSyncing} />
                 </h2>
                 <span className="text-xs bg-[#E6F0E6] text-[#8FA88B] font-semibold px-2.5 py-1 rounded-full">
                   共 {entries.length} 篇
@@ -556,12 +928,14 @@ export default function App() {
                         <div className="flex justify-between items-start">
                           <div>
                             <span className="text-xs font-bold text-gray-400 font-mono">{e.date}</span>
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <div className="w-7 h-7 rounded-full bg-[#E6F0E6] flex items-center justify-center text-[#8FA88B] shadow-inner">
-                                <Smile size={15} />
+                            {moodLevel !== null && (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <div className="w-7 h-7 rounded-full bg-[#E6F0E6] flex items-center justify-center text-[#8FA88B] shadow-inner">
+                                  <Smile size={15} />
+                                </div>
+                                <span className="text-xs font-semibold text-gray-700">心情 {formatScaleValue(moodLevel)}</span>
                               </div>
-                              <span className="text-xs font-semibold text-gray-700">心情 {formatScaleValue(moodLevel)}</span>
-                            </div>
+                            )}
                           </div>
                           <button
                             onClick={() => requestDeleteEntry(e.id)}
@@ -573,16 +947,26 @@ export default function App() {
                         </div>
 
                         {/* Middle metrics row */}
-                        <div className="grid grid-cols-2 gap-2 bg-gray-50/50 rounded-2xl p-2.5 text-xs text-gray-500">
-                          <div className="flex items-center gap-1">
-                            <Moon size={12} className="text-indigo-400" />
-                            <span>睡眠质量：<strong className="text-gray-700">{formatScaleValue(sleepQuality)}</strong></span>
+                        {(sleepQuality !== null || moodLevel !== null) && (
+                          <div
+                            className={`grid ${
+                              sleepQuality !== null && moodLevel !== null ? 'grid-cols-2' : 'grid-cols-1'
+                            } gap-2 bg-gray-50/50 rounded-2xl p-2.5 text-xs text-gray-500`}
+                          >
+                            {sleepQuality !== null && (
+                              <div className="flex items-center gap-1">
+                                <Moon size={12} className="text-indigo-400" />
+                                <span>睡眠质量：<strong className="text-gray-700">{formatScaleValue(sleepQuality)}</strong></span>
+                              </div>
+                            )}
+                            {moodLevel !== null && (
+                              <div className="flex items-center gap-1">
+                                <Smile size={12} className="text-[#8FA88B]" />
+                                <span>心情：<strong className="text-gray-700">{formatScaleValue(moodLevel)}</strong></span>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Smile size={12} className="text-[#8FA88B]" />
-                            <span>心情：<strong className="text-gray-700">{formatScaleValue(moodLevel)}</strong></span>
-                          </div>
-                        </div>
+                        )}
 
                         {/* Activities row */}
                         {activities.length > 0 && (
@@ -629,7 +1013,10 @@ export default function App() {
             <div id="report-view-pane" className="flex flex-col gap-4">
               {/* Header with Monthly/Yearly toggle */}
               <div className="flex justify-between items-center mb-1">
-                <h2 className="text-2xl font-bold text-[#4A4540]">报告</h2>
+                <h2 className="text-2xl font-bold text-[#4A4540] flex items-center gap-2">
+                  <span>报告</span>
+                  <SyncStatusIcon isSyncing={isCloudSyncing} />
+                </h2>
                 
                 {/* Custom Month/Year toggle tabs */}
                 <div className="bg-gray-200/60 p-0.5 rounded-xl flex items-center relative shadow-inner">
@@ -717,6 +1104,7 @@ export default function App() {
                 entries={entries}
                 selectedYear={calendarYear}
                 selectedMonth={calendarMonth}
+                todayDate={currentDate}
                 onMonthChange={(year, month) => {
                   setCalendarYear(year);
                   setCalendarMonth(month);
@@ -725,12 +1113,13 @@ export default function App() {
                   setCalendarEditorDate(date);
                   setIsLogModalOpen(true);
                 }}
+                isSyncing={isCloudSyncing}
               />
             </PageTransition>
           )}
 
           {/* TAB 4: PROFILE & STREAKS (我的 & 植物架) */}
-          {activeTab === 'profile' && (
+          {activeTab === 'profile' && !isSecondarySettingsOpen && (
             <div id="profile-view-pane" className="flex flex-col gap-4 pb-12">
               <div className="flex items-center gap-4 mb-2">
                 <div className="w-16 h-16 bg-[#E6F0E6] rounded-full border-[3px] border-white shadow-md overflow-hidden flex items-center justify-center text-3xl select-none">
@@ -809,6 +1198,63 @@ export default function App() {
                   )}
                 </div>
               )}
+
+              <div
+                id="profile-settings-group"
+                className="overflow-hidden rounded-3xl border border-[#F2EDE9] bg-white shadow-xs"
+              >
+                <button
+                  type="button"
+                  onClick={navigateToRecordFieldSettings}
+                  className="flex min-h-[88px] w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#E6F0E6]/25 active:bg-[#E6F0E6]/45"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#E6F0E6] text-[#8FA88B]">
+                      <SlidersHorizontal size={19} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-[#4A4540]">记录模块</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-gray-400">
+                        选择新建和编辑记录时显示的内容
+                      </span>
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5 text-[#8FA88B]">
+                    <span className="font-mono text-[10px] font-bold">
+                      已启用 {preferences.enabledRecordFieldIds.length} 项
+                    </span>
+                    <ChevronRight size={17} />
+                  </span>
+                </button>
+
+                {isNativeMobile && (
+                  <button
+                    type="button"
+                    onClick={navigateToReminderSettings}
+                    className="flex min-h-[88px] w-full items-center justify-between gap-4 border-t border-[#F2EDE9] px-5 py-4 text-left transition-colors hover:bg-[#FAF0ED]/35 active:bg-[#FAF0ED]/60"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#FAF0ED] text-[#D48166]">
+                        <BellRing size={19} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-[#4A4540]">打卡提醒</span>
+                        <span className="mt-1 block text-xs leading-relaxed text-gray-400">
+                          设置每天提醒记录的时间
+                        </span>
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1.5 text-[#8FA88B]">
+                      <span className="text-[10px] font-bold">
+                        {preferences.reminders.enabled
+                          ? `已开启 · ${preferences.reminders.times.length} 个`
+                          : '未开启'}
+                      </span>
+                      <ChevronRight size={17} />
+                    </span>
+                  </button>
+                )}
+              </div>
 
               <div className="bg-white border border-[#F2EDE9] rounded-3xl p-5 shadow-xs flex flex-col gap-4">
                 <div className="flex items-start justify-between gap-3">
@@ -896,10 +1342,40 @@ export default function App() {
             </div>
           )}
 
+          {activeTab === 'profile' && isRecordFieldSettingsOpen && (
+            <PageTransition key="record-field-settings">
+              <RecordFieldSettingsPage
+                enabledFieldIds={preferences.enabledRecordFieldIds}
+                isSyncing={isCloudSyncing}
+                onBack={() => navigateToTab('profile')}
+                onToggle={handleToggleRecordField}
+              />
+            </PageTransition>
+          )}
+
+          {activeTab === 'profile' && isReminderSettingsOpen && isNativeMobile && (
+            <PageTransition key="reminder-settings">
+              <ReminderSettingsPage
+                reminders={preferences.reminders}
+                permissionState={reminderPermissionState}
+                exactAlarmState={reminderExactAlarmState}
+                isPermissionBusy={isReminderPermissionBusy}
+                isExactAlarmBusy={isReminderExactAlarmBusy}
+                isSyncing={isCloudSyncing}
+                onBack={() => navigateToTab('profile')}
+                onToggle={(enabled) => void handleToggleReminders(enabled)}
+                onRequestExactAlarmPermission={() => void handleRequestReminderExactAlarmPermission()}
+                onAddTime={handleAddReminderTime}
+                onRemoveTime={handleRemoveReminderTime}
+              />
+            </PageTransition>
+          )}
+
         </div>
 
         {/* BOTTOM TAB NAVIGATION BAR (custom curved central action shape) */}
-        <div id="bottom-nav-bar" className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-[#F2EDE9] flex justify-around items-center px-4 z-40 select-none">
+        {!isSecondarySettingsOpen && (
+          <div id="bottom-nav-bar" className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-[#F2EDE9] flex justify-around items-center px-4 z-40 select-none">
           {/* Tab 1: Log History */}
           <button
             onClick={() => navigateToTab('log')}
@@ -958,7 +1434,8 @@ export default function App() {
             <User size={22} className={activeTab === 'profile' ? 'stroke-[2.5px]' : 'stroke-[1.8px]'} />
             <span className="text-[10px] font-bold">我的</span>
           </button>
-        </div>
+          </div>
+        )}
 
         {/* Global Log modal drawer */}
         <LogModal
@@ -968,8 +1445,10 @@ export default function App() {
             setCalendarEditorDate(null);
           }}
           onSave={handleSaveEntry}
+          todayDate={currentDate}
           initialDate={calendarEditorDate || undefined}
           entry={calendarEditorEntry || todayEntry}
+          enabledFieldIds={preferences.enabledRecordFieldIds}
         />
 
         <ConfirmDialog

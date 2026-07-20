@@ -8,11 +8,11 @@ export interface AppDependencies {
 }
 
 const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
-  const message = error instanceof Error ? error.message : '服务器内部错误。';
+  console.error('[mood-tracker] Unhandled server error:', error);
   response.status(500).json({
     error: {
       code: 'INTERNAL_ERROR',
-      message,
+      message: '服务器暂时无法处理请求，请稍后再试。',
     },
   });
 };

@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, BriefcaseBusiness, Check, Moon, Plus, Salad, Save, Smile, Zap } from 'lucide-react';
+import { BookOpen, BriefcaseBusiness, Check, Moon, Salad, Smile, Zap } from 'lucide-react';
 import { FIELD_DEFINITIONS } from '../fieldSchema';
 import { sanitizeLogValues } from '../logEntry';
 import { LogEntry, LogValues } from '../types';
+import { RecordFieldId } from '../../shared/appPreferences';
 
 interface RecordFormProps {
   date: string;
   entry?: LogEntry;
   onDateChange?: (date: string) => void;
-  onSave: (entry: Omit<LogEntry, 'id'>) => void;
-  submitLabel: string;
-  mode: 'create' | 'edit';
+  onChange: (entry: Omit<LogEntry, 'id'>) => void;
   showDateInput?: boolean;
   surface?: 'drawer' | 'page';
+  enabledFieldIds: RecordFieldId[];
 }
 
 const getScaleIcon = (fieldId: string) => {
@@ -23,17 +23,21 @@ const getScaleIcon = (fieldId: string) => {
   return <Smile size={14} className="text-[#8FA88B]" />;
 };
 
-const getInitialValues = (entry?: LogEntry): Partial<LogValues> => entry?.values ? { ...entry.values } : {};
+export const getInitialValues = (entry?: LogEntry): Partial<LogValues> => entry?.values ? { ...entry.values } : {};
+
+export const createRecordPayload = (date: string, values: Partial<LogValues>): Omit<LogEntry, 'id'> => ({
+  date,
+  values: sanitizeLogValues(values),
+});
 
 export const RecordForm: React.FC<RecordFormProps> = ({
   date,
   entry,
   onDateChange,
-  onSave,
-  submitLabel,
-  mode,
+  onChange,
   showDateInput = false,
   surface = 'page',
+  enabledFieldIds,
 }) => {
   const [values, setValues] = useState<Partial<LogValues>>(() => getInitialValues(entry));
   const scaleCardClass = surface === 'drawer'
@@ -50,44 +54,35 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     setValues(getInitialValues(entry));
   }, [entry, date]);
 
+  const applyValues = (nextValues: Partial<LogValues>) => {
+    setValues(nextValues);
+    onChange(createRecordPayload(date, nextValues));
+  };
+
   const setScaleValue = (fieldId: string, value: number) => {
-    setValues((prev) => {
-      const currentValue = typeof prev[fieldId] === 'number' ? prev[fieldId] as number : undefined;
-      const nextValues = { ...prev };
+    const currentValue = typeof values[fieldId] === 'number' ? values[fieldId] as number : undefined;
+    const nextValues = { ...values };
 
-      if (currentValue === value) {
-        delete nextValues[fieldId];
-        return nextValues;
-      }
+    if (currentValue === value) delete nextValues[fieldId];
+    else nextValues[fieldId] = value;
 
-      return { ...nextValues, [fieldId]: value };
-    });
+    applyValues(nextValues);
   };
 
   const toggleEnumValue = (fieldId: string, optionId: string) => {
-    setValues((prev) => {
-      const current = Array.isArray(prev[fieldId]) ? prev[fieldId] as string[] : [];
-      const next = current.includes(optionId)
-        ? current.filter((id) => id !== optionId)
-        : [...current, optionId];
-      return { ...prev, [fieldId]: next };
-    });
+    const current = Array.isArray(values[fieldId]) ? values[fieldId] as string[] : [];
+    const next = current.includes(optionId)
+      ? current.filter((id) => id !== optionId)
+      : [...current, optionId];
+    applyValues({ ...values, [fieldId]: next });
   };
 
   const setStringValue = (fieldId: string, value: string) => {
-    setValues((prev) => ({ ...prev, [fieldId]: value }));
-  };
-
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    onSave({
-      date,
-      values: sanitizeLogValues(values),
-    });
+    applyValues({ ...values, [fieldId]: value });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {showDateInput && (
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">选择日期</label>
@@ -101,7 +96,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         </div>
       )}
 
-      {FIELD_DEFINITIONS.map((field) => {
+      {FIELD_DEFINITIONS.filter((field) => enabledFieldIds.includes(field.id as RecordFieldId)).map((field) => {
         if (field.type === 'scale') {
           const selectedValue = typeof values[field.id] === 'number' ? values[field.id] as number : undefined;
 
@@ -191,13 +186,6 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         );
       })}
 
-      <button
-        type="submit"
-        className={`w-full py-3.5 bg-[#8FA88B] hover:bg-[#7D9779] text-white rounded-full text-sm font-semibold shadow-md active:scale-[0.99] transition-all flex items-center justify-center gap-1 cursor-pointer ${surface === 'drawer' ? 'mt-2' : ''}`}
-      >
-        {mode === 'edit' ? <Save size={16} /> : <Plus size={16} />}
-        <span>{submitLabel}</span>
-      </button>
-    </form>
+    </div>
   );
 };

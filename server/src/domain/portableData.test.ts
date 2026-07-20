@@ -5,6 +5,13 @@ import {
   parseImportEnvelope,
   sanitizeServerLogValues,
 } from './portableData';
+import { createDefaultAppPreferences } from '../../../shared/appPreferences';
+import { isDatabaseEntryId, normalizeDatabaseEntryId } from './entryId';
+
+const validEntryId = '5fd3db76-8db6-4bf7-981e-7268f4426107';
+
+assert.equal(normalizeDatabaseEntryId(validEntryId), validEntryId);
+assert.equal(isDatabaseEntryId(normalizeDatabaseEntryId('legacy-short-id')), true);
 
 const dirtyValues = sanitizeServerLogValues({
   sleepQuality: 0,
@@ -49,6 +56,7 @@ const normalized = normalizeSyncData({
   points: '42',
   unlockedItems: ['plant_succulent', false, 'badge_focus'],
   isPremiumUnlocked: true,
+  preferences: { enabledRecordFieldIds: ['journal', 'unknown', 'journal'] },
 });
 
 assert.deepEqual(normalized, {
@@ -62,7 +70,17 @@ assert.deepEqual(normalized, {
   points: 42,
   unlockedItems: ['plant_succulent', 'badge_focus'],
   isPremiumUnlocked: true,
+  preferences: {
+    enabledRecordFieldIds: ['journal'],
+    reminders: createDefaultAppPreferences().reminders,
+  },
 });
+
+assert.deepEqual(
+  normalizeSyncData({ entries: [], preferences: { enabledRecordFieldIds: [] } }).preferences,
+  createDefaultAppPreferences()
+);
+assert.deepEqual(normalizeSyncData({ entries: [] }).preferences, createDefaultAppPreferences());
 
 const envelope = createExportEnvelope(normalized, new Date('2026-07-08T00:00:00.000Z'));
 assert.equal(envelope.app, 'mood-tracker');

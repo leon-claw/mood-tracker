@@ -8,10 +8,15 @@ const confirmDialogSource = readFileSync(new URL('./ConfirmDialog.tsx', import.m
 
 assert.match(logModalSource, /entry\?: LogEntry/);
 assert.match(logModalSource, /<RecordForm/);
+assert.match(logModalSource, /onChange=\{onSave\}/);
+assert.equal(logModalSource.includes('submitLabel='), false);
 assert.match(appSource, /todayEntry/);
 assert.match(appSource, /calendarEditorEntry/);
 assert.match(appSource, /<LogModal[\s\S]*initialDate=\{calendarEditorDate \|\| undefined\}/);
 assert.match(appSource, /<LogModal[\s\S]*entry=\{calendarEditorEntry \|\| todayEntry\}/);
+assert.match(appSource, /<LogModal[\s\S]*todayDate=\{currentDate\}/);
+assert.match(logModalSource, /const defaultDate = initialDate \|\| todayDate/);
+assert.match(logModalSource, /const isToday = date === todayDate/);
 assert.match(appSource, /onSelectDate=\{\(date\) => \{[\s\S]*setCalendarEditorDate\(date\);[\s\S]*setIsLogModalOpen\(true\);[\s\S]*\}\}/);
 assert.equal(appSource.includes('<RecordEditorPage'), false);
 

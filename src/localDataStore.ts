@@ -1,9 +1,14 @@
 import { AppExportData } from './dataPortability';
 import { ENTRY_STORAGE_KEY, isLegacyDemoEntries } from './logEntry';
+import {
+  hasDefaultAppPreferences,
+  normalizeAppPreferences,
+} from '../shared/appPreferences';
 
 export const POINTS_STORAGE_KEY = 'mood_tracker_points';
 export const UNLOCKED_STORAGE_KEY = 'mood_tracker_unlocked';
 export const PREMIUM_STORAGE_KEY = 'mood_tracker_premium';
+export const PREFERENCES_STORAGE_KEY = 'mood_tracker_preferences';
 
 const readJsonArray = <Item>(key: string, fallback: Item[]): Item[] => {
   const saved = localStorage.getItem(key);
@@ -33,11 +38,23 @@ const readEntries = () => {
   }
 };
 
+const readPreferences = () => {
+  const saved = localStorage.getItem(PREFERENCES_STORAGE_KEY);
+  if (!saved) return normalizeAppPreferences(undefined);
+
+  try {
+    return normalizeAppPreferences(JSON.parse(saved));
+  } catch {
+    return normalizeAppPreferences(undefined);
+  }
+};
+
 export const readLocalAppData = (): AppExportData => ({
   entries: readEntries(),
   points: Number.parseInt(localStorage.getItem(POINTS_STORAGE_KEY) || '0', 10) || 0,
   unlockedItems: readJsonArray<string>(UNLOCKED_STORAGE_KEY, []),
   isPremiumUnlocked: localStorage.getItem(PREMIUM_STORAGE_KEY) === 'true',
+  preferences: readPreferences(),
 });
 
 export const writeLocalAppData = (data: AppExportData) => {
@@ -45,6 +62,7 @@ export const writeLocalAppData = (data: AppExportData) => {
   localStorage.setItem(POINTS_STORAGE_KEY, String(Math.max(0, Math.round(data.points || 0))));
   localStorage.setItem(UNLOCKED_STORAGE_KEY, JSON.stringify(data.unlockedItems || []));
   localStorage.setItem(PREMIUM_STORAGE_KEY, data.isPremiumUnlocked ? 'true' : 'false');
+  localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(normalizeAppPreferences(data.preferences)));
 };
 
 export const clearLocalAppData = () => {
@@ -52,6 +70,7 @@ export const clearLocalAppData = () => {
   localStorage.removeItem(POINTS_STORAGE_KEY);
   localStorage.removeItem(UNLOCKED_STORAGE_KEY);
   localStorage.removeItem(PREMIUM_STORAGE_KEY);
+  localStorage.removeItem(PREFERENCES_STORAGE_KEY);
 };
 
 export const hasLocalBusinessData = () => {
@@ -60,6 +79,7 @@ export const hasLocalBusinessData = () => {
     data.entries.length > 0 ||
     data.points > 0 ||
     data.unlockedItems.length > 0 ||
-    data.isPremiumUnlocked
+    data.isPremiumUnlocked ||
+    !hasDefaultAppPreferences(data.preferences)
   );
 };

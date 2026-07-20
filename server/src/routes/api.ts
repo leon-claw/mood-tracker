@@ -6,6 +6,11 @@ import { clearSessionCookie, createRequireAuth, setSessionCookie, signSessionTok
 import { createExportEnvelope, normalizeSyncData, parseImportEnvelope } from '../domain/portableData';
 import { sanitizeServerLogValues } from '../domain/logValues';
 import { AppRepository, UserRecord } from '../repositories/types';
+import {
+  MAX_REMINDER_TIMES,
+  normalizeAppPreferences,
+  RECORD_FIELD_IDS,
+} from '../../../shared/appPreferences';
 
 interface ApiRouterDependencies {
   repository: AppRepository;
@@ -46,6 +51,14 @@ const stateSchema = z.object({
   points: z.number().optional().default(0),
   unlockedItems: z.array(z.string()).optional().default([]),
   isPremiumUnlocked: z.boolean().optional().default(false),
+});
+
+const preferencesSchema = z.object({
+  enabledRecordFieldIds: z.array(z.enum(RECORD_FIELD_IDS)).min(1),
+  reminders: z.object({
+    enabled: z.boolean(),
+    times: z.array(z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)).max(MAX_REMINDER_TIMES),
+  }).optional(),
 });
 
 class ApiError extends Error {
@@ -215,6 +228,12 @@ export const createApiRouter = ({
     const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
     const body = parseBody(stateSchema, request.body);
     response.json(await repository.updateUserState(user.id, body));
+  }));
+
+  router.put('/preferences', requireAuth, asyncHandler(async (request, response) => {
+    const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
+    const preferences = normalizeAppPreferences(parseBody(preferencesSchema, request.body));
+    response.json({ preferences: await repository.updatePreferences(user.id, preferences) });
   }));
 
   router.get('/export', requireAuth, asyncHandler(async (request, response) => {

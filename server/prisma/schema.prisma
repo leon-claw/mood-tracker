@@ -47,6 +47,7 @@ model UserState {
   points            Int      @default(0)
   unlockedItems     Json     @default("[]") @map("unlocked_items")
   isPremiumUnlocked Boolean  @default(false) @map("is_premium_unlocked")
+  preferences       Json     @default("{}")
   updatedAt         DateTime @updatedAt @map("updated_at")
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 

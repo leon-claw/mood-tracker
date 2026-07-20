@@ -1,7 +1,13 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { normalizeSyncData, ServerLogEntry, SyncData } from '../domain/portableData';
 import { sanitizeServerLogValues, ServerLogValues } from '../domain/logValues';
+import { normalizeDatabaseEntryId } from '../domain/entryId';
 import { AppRepository, UserStateRecord } from './types';
+import {
+  AppPreferences,
+  createDefaultAppPreferences,
+  normalizeAppPreferences,
+} from '../../../shared/appPreferences';
 
 const dateStringToDate = (date: string) => new Date(`${date}T00:00:00.000Z`);
 const dateToDateString = (date: Date) => date.toISOString().slice(0, 10);
@@ -13,6 +19,7 @@ const emptyData = (): SyncData => ({
   points: 0,
   unlockedItems: [],
   isPremiumUnlocked: false,
+  preferences: createDefaultAppPreferences(),
 });
 
 export class PrismaRepository implements AppRepository {
@@ -45,6 +52,7 @@ export class PrismaRepository implements AppRepository {
             points: 0,
             unlockedItems: [],
             isPremiumUnlocked: false,
+            preferences: createDefaultAppPreferences() as unknown as Prisma.InputJsonValue,
           },
         },
       },
@@ -81,6 +89,7 @@ export class PrismaRepository implements AppRepository {
       points: state?.points || 0,
       unlockedItems: toStringArray(state?.unlockedItems),
       isPremiumUnlocked: state?.isPremiumUnlocked === true,
+      preferences: normalizeAppPreferences(state?.preferences),
     });
   }
 
@@ -92,7 +101,7 @@ export class PrismaRepository implements AppRepository {
       if (normalized.entries.length > 0) {
         await transaction.logEntry.createMany({
           data: normalized.entries.map((entry) => ({
-            id: entry.id,
+            id: normalizeDatabaseEntryId(entry.id),
             userId,
             date: dateStringToDate(entry.date),
             values: entry.values as Prisma.InputJsonValue,
@@ -105,12 +114,14 @@ export class PrismaRepository implements AppRepository {
           points: normalized.points,
           unlockedItems: normalized.unlockedItems,
           isPremiumUnlocked: normalized.isPremiumUnlocked,
+          preferences: normalized.preferences as unknown as Prisma.InputJsonValue,
         },
         create: {
           userId,
           points: normalized.points,
           unlockedItems: normalized.unlockedItems,
           isPremiumUnlocked: normalized.isPremiumUnlocked,
+          preferences: normalized.preferences as unknown as Prisma.InputJsonValue,
         },
       });
     });
@@ -166,6 +177,21 @@ export class PrismaRepository implements AppRepository {
       unlockedItems: toStringArray(updated.unlockedItems),
       isPremiumUnlocked: updated.isPremiumUnlocked,
     };
+  }
+
+  async updatePreferences(userId: string, preferences: AppPreferences) {
+    const normalized = normalizeAppPreferences(preferences);
+    const updated = await this.prisma.userState.upsert({
+      where: { userId },
+      update: {
+        preferences: normalized as unknown as Prisma.InputJsonValue,
+      },
+      create: {
+        userId,
+        preferences: normalized as unknown as Prisma.InputJsonValue,
+      },
+    });
+    return normalizeAppPreferences(updated.preferences);
   }
 
   private toServerEntry(entry: { id: string; date: Date; values: Prisma.JsonValue }): ServerLogEntry {

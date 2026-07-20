@@ -3,33 +3,38 @@ import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
 import { LogEntry } from '../types';
 import { RecordForm } from './RecordForm';
+import { RecordFieldId } from '../../shared/appPreferences';
 
 interface LogModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (entry: Omit<LogEntry, 'id'>) => void;
+  todayDate: string;
   initialDate?: string;
   entry?: LogEntry;
+  enabledFieldIds: RecordFieldId[];
 }
 
-export const LogModal: React.FC<LogModalProps> = ({ isOpen, onClose, onSave, initialDate, entry }) => {
-  const todayStr = initialDate || new Date().toISOString().split('T')[0];
-  const [date, setDate] = useState(todayStr);
+export const LogModal: React.FC<LogModalProps> = ({
+  isOpen,
+  onClose,
+  onSave,
+  todayDate,
+  initialDate,
+  entry,
+  enabledFieldIds,
+}) => {
+  const defaultDate = initialDate || todayDate;
+  const [date, setDate] = useState(defaultDate);
   const selectedEntry = entry?.date === date ? entry : undefined;
-  const isToday = date === new Date().toISOString().split('T')[0];
+  const isToday = date === todayDate;
   const modalTitle = selectedEntry ? '编辑记录' : isToday ? '记录今天' : '新建记录';
-  const submitLabel = selectedEntry ? '保存修改' : isToday ? '保存今日记录' : '保存记录';
 
   useEffect(() => {
     if (isOpen) {
-      setDate(todayStr);
+      setDate(defaultDate);
     }
-  }, [isOpen, todayStr]);
-
-  const handleSave = (record: Omit<LogEntry, 'id'>) => {
-    onSave(record);
-    onClose();
-  };
+  }, [defaultDate, isOpen]);
 
   return (
     <AnimatePresence>
@@ -68,11 +73,10 @@ export const LogModal: React.FC<LogModalProps> = ({ isOpen, onClose, onSave, ini
               date={date}
               entry={selectedEntry}
               onDateChange={setDate}
-              onSave={handleSave}
-              submitLabel={submitLabel}
-              mode={selectedEntry ? 'edit' : 'create'}
+              onChange={onSave}
               showDateInput
               surface="drawer"
+              enabledFieldIds={enabledFieldIds}
             />
           </motion.div>
         </motion.div>

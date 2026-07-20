@@ -9,5 +9,8 @@ assert.equal(dateGridSource.includes('/10'), false, 'calendar date cells must no
 assert.equal(source.includes('getActivityOption'), false, 'calendar date cells must not render activity emoji markers');
 assert.match(source, /h-14/);
 assert.match(source, /min-h-14/);
+assert.match(source, /todayDate: string/);
+assert.match(source, /cell\.date === todayDate/);
+assert.equal(source.includes('new Date().toISOString()'), false);
 
 console.log('calendar month view tests passed');

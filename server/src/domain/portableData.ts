@@ -1,4 +1,5 @@
 import { sanitizeServerLogValues, ServerLogValues } from './logValues';
+import { AppPreferences, normalizeAppPreferences } from '../../../shared/appPreferences';
 
 export interface ServerLogEntry {
   id: string;
@@ -11,6 +12,7 @@ export interface SyncData {
   points: number;
   unlockedItems: string[];
   isPremiumUnlocked: boolean;
+  preferences: AppPreferences;
 }
 
 export interface ExportEnvelope {
@@ -65,6 +67,7 @@ export const normalizeSyncData = (value: unknown): SyncData => {
     points: normalizePoints(value.points),
     unlockedItems: normalizeStringArray(value.unlockedItems),
     isPremiumUnlocked: value.isPremiumUnlocked === true,
+    preferences: normalizeAppPreferences(value.preferences),
   };
 };
 

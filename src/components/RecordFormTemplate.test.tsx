@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { RecordForm } from './RecordForm';
+import { createRecordPayload, getInitialValues, RecordForm } from './RecordForm';
+import { RECORD_FIELD_IDS } from '../../shared/appPreferences';
 
 const markup = renderToStaticMarkup(
   <RecordForm
     date="2026-07-07"
-    onSave={() => undefined}
-    submitLabel="保存今日记录"
-    mode="create"
+    onChange={() => undefined}
     showDateInput
     surface="drawer"
+    enabledFieldIds={[...RECORD_FIELD_IDS]}
   />
 );
 
@@ -32,6 +32,8 @@ for (const label of [
 
 assert.ok(markup.includes('未选择'), 'expected scale fields to start without a selected value');
 assert.equal(markup.includes('7/10'), false, 'expected scale fields not to default to 7/10');
+assert.equal(markup.includes('保存今日记录'), false, 'expected the auto-save form to have no confirmation button');
+assert.equal(markup.includes('保存修改'), false, 'expected the auto-save form to have no confirmation button');
 
 for (const option of [
   '跑步',
@@ -59,5 +61,31 @@ for (const option of [
 for (const removedOption of ['阅读', '工作', '休息', '咖啡', '美食', '排队']) {
   assert.equal(markup.includes(`>${removedOption}</span>`), false, `expected form to remove ${removedOption}`);
 }
+
+const journalOnlyMarkup = renderToStaticMarkup(
+  <RecordForm
+    date="2026-07-07"
+    onChange={() => undefined}
+    enabledFieldIds={['journal']}
+  />
+);
+assert.ok(journalOnlyMarkup.includes('随笔日志'));
+assert.equal(journalOnlyMarkup.includes('睡眠质量'), false);
+assert.equal(journalOnlyMarkup.includes('心情'), false);
+
+const historicalValues = getInitialValues({
+  id: 'historical-entry',
+  date: '2026-07-06',
+  values: { moodLevel: 8, journal: '保留隐藏前的心情' },
+});
+assert.deepEqual(createRecordPayload('2026-07-06', historicalValues).values, {
+  moodLevel: 8,
+  activities: [],
+  weather: [],
+  social: [],
+  achievementMilestones: [],
+  journal: '保留隐藏前的心情',
+  achievement: '',
+});
 
 console.log('record form template tests passed');

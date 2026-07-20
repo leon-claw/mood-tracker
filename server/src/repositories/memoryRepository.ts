@@ -2,12 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { normalizeSyncData, ServerLogEntry, SyncData } from '../domain/portableData';
 import { sanitizeServerLogValues, ServerLogValues } from '../domain/logValues';
 import { AppRepository, CaptchaRecord, UserRecord, UserStateRecord } from './types';
+import {
+  AppPreferences,
+  createDefaultAppPreferences,
+  normalizeAppPreferences,
+} from '../../../shared/appPreferences';
 
 const createEmptyData = (): SyncData => ({
   entries: [],
   points: 0,
   unlockedItems: [],
   isPremiumUnlocked: false,
+  preferences: createDefaultAppPreferences(),
 });
 
 export class MemoryRepository implements AppRepository {
@@ -115,12 +121,20 @@ export class MemoryRepository implements AppRepository {
     };
   }
 
+  async updatePreferences(userId: string, preferences: AppPreferences) {
+    const current = this.cloneData(this.userData.get(userId) || createEmptyData());
+    current.preferences = normalizeAppPreferences(preferences);
+    this.userData.set(userId, current);
+    return normalizeAppPreferences(current.preferences);
+  }
+
   private cloneData(data: SyncData): SyncData {
     return {
       entries: data.entries.map((entry) => this.cloneEntry(entry)),
       points: data.points,
       unlockedItems: [...data.unlockedItems],
       isPremiumUnlocked: data.isPremiumUnlocked,
+      preferences: normalizeAppPreferences(data.preferences),
     };
   }
 
