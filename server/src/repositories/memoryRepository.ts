@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeSyncData, ServerLogEntry, SyncData } from '../domain/portableData';
 import { sanitizeServerLogValues, ServerLogValues } from '../domain/logValues';
-import { AppRepository, CaptchaRecord, UserRecord, UserStateRecord } from './types';
+import {
+  AppRepository,
+  BootstrapData,
+  CaptchaRecord,
+  EntryMonthSummary,
+  UserRecord,
+  UserStateRecord,
+  YearlyReportData,
+} from './types';
 import {
   AppPreferences,
   createDefaultAppPreferences,
@@ -74,6 +82,48 @@ export class MemoryRepository implements AppRepository {
     }
   }
 
+  async getBootstrapData(userId: string): Promise<BootstrapData> {
+    const data = this.cloneData(this.userData.get(userId) || createEmptyData());
+    return {
+      points: data.points,
+      unlockedItems: data.unlockedItems,
+      isPremiumUnlocked: data.isPremiumUnlocked,
+      preferences: data.preferences,
+    };
+  }
+
+  async getEntriesByMonth(userId: string, year: number, month: number) {
+    const prefix = `${year}-${String(month).padStart(2, '0')}-`;
+    const data = this.userData.get(userId) || createEmptyData();
+    return data.entries
+      .filter((entry) => entry.date.startsWith(prefix))
+      .map((entry) => this.cloneEntry(entry));
+  }
+
+  async getEntryMonths(userId: string): Promise<EntryMonthSummary[]> {
+    const data = this.userData.get(userId) || createEmptyData();
+    const counts = new Map<string, EntryMonthSummary>();
+    for (const entry of data.entries) {
+      const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(entry.date);
+      if (!match) continue;
+      const key = `${match[1]}-${match[2]}`;
+      const existing = counts.get(key);
+      counts.set(key, {
+        year: Number(match[1]),
+        month: Number(match[2]),
+        count: (existing?.count || 0) + 1,
+      });
+    }
+    return [...counts.values()].sort((left, right) =>
+      (right.year * 12 + right.month) - (left.year * 12 + left.month)
+    );
+  }
+
+  async getYearlyReport(userId: string, year: number): Promise<YearlyReportData> {
+    const data = this.userData.get(userId) || createEmptyData();
+    return buildYearlyReport(data.entries, year);
+  }
+
   async getSyncData(userId: string) {
     return this.cloneData(this.userData.get(userId) || createEmptyData());
   }
@@ -103,6 +153,12 @@ export class MemoryRepository implements AppRepository {
   async deleteEntry(userId: string, entryId: string) {
     const current = this.cloneData(this.userData.get(userId) || createEmptyData());
     current.entries = current.entries.filter((entry) => entry.id !== entryId);
+    this.userData.set(userId, current);
+  }
+
+  async deleteEntryByDate(userId: string, date: string) {
+    const current = this.cloneData(this.userData.get(userId) || createEmptyData());
+    current.entries = current.entries.filter((entry) => entry.date !== date);
     this.userData.set(userId, current);
   }
 
@@ -154,3 +210,28 @@ export class MemoryRepository implements AppRepository {
     };
   }
 }
+
+const average = (values: number[]) => values.length > 0
+  ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
+  : null;
+
+const buildYearlyReport = (entries: ServerLogEntry[], year: number): YearlyReportData => ({
+  year,
+  months: Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1;
+    const prefix = `${year}-${String(month).padStart(2, '0')}-`;
+    const monthEntries = entries.filter((entry) => entry.date.startsWith(prefix));
+    const moodValues = monthEntries
+      .map((entry) => entry.values.moodLevel)
+      .filter((value): value is number => typeof value === 'number');
+    const sleepValues = monthEntries
+      .map((entry) => entry.values.sleepQuality)
+      .filter((value): value is number => typeof value === 'number');
+    return {
+      month,
+      entryCount: monthEntries.length,
+      averageMood: average(moodValues),
+      averageSleepQuality: average(sleepValues),
+    };
+  }),
+});

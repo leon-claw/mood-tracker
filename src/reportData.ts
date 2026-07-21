@@ -1,4 +1,5 @@
 import { LogEntry } from './types';
+import type { YearlyReportData } from './cloudDataStore';
 
 export const MOOD_BUCKETS = [
   { id: 'low', label: '低落', min: 1, max: 2, color: '#BCAFA4', emoji: '😔' },
@@ -99,3 +100,27 @@ export const getSleepMoodData = (entries: LogEntry[], year: number, month: numbe
         : 0,
     };
   });
+
+const average = (values: number[]) => values.length > 0
+  ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
+  : null;
+
+export const getYearlyReportData = (entries: LogEntry[], year: number): YearlyReportData => ({
+  year,
+  months: Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1;
+    const monthEntries = getMonthEntries(entries, year, month);
+    const moodValues = monthEntries
+      .map((entry) => getNumberValue(entry, 'moodLevel'))
+      .filter((value): value is number => value !== undefined);
+    const sleepValues = monthEntries
+      .map((entry) => getNumberValue(entry, 'sleepQuality'))
+      .filter((value): value is number => value !== undefined);
+    return {
+      month,
+      entryCount: monthEntries.length,
+      averageMood: average(moodValues),
+      averageSleepQuality: average(sleepValues),
+    };
+  }),
+});

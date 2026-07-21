@@ -1,5 +1,6 @@
 import { getMoodFlowData, getSleepMoodData } from '../reportData';
 import { LogEntry } from '../types';
+import type { YearlyReportData } from '../cloudDataStore';
 
 const gridLineColor = '#eef1ee';
 const axisLabelColor = '#99a399';
@@ -163,3 +164,68 @@ export const buildSleepMoodOption = (
     color: [sage],
   };
 };
+
+export const buildYearlyOverviewOption = (report: YearlyReportData) => ({
+  animationDuration: 500,
+  grid: { left: 30, right: 30, top: 22, bottom: 26 },
+  tooltip: {
+    trigger: 'axis',
+    borderWidth: 1,
+    borderColor: '#f3f4f2',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    extraCssText: 'border-radius:12px;box-shadow:0 12px 28px rgba(74,69,64,0.12);',
+    textStyle: { color: textColor, fontSize: 12, fontFamily: 'Inter, sans-serif' },
+  },
+  xAxis: {
+    type: 'category',
+    data: report.months.map((month) => `${month.month}月`),
+    axisLine: { show: false },
+    axisTick: { show: false },
+    axisLabel: { color: axisLabelColor, fontSize: 10 },
+  },
+  yAxis: [
+    {
+      type: 'value',
+      min: 0,
+      max: 10,
+      interval: 2,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: axisLabelColor, fontSize: 10 },
+      splitLine: { lineStyle: { color: '#f3f5f3', type: 'dashed' } },
+    },
+    { type: 'value', min: 0, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false }, splitLine: { show: false } },
+  ],
+  series: [
+    {
+      name: '记录天数',
+      type: 'bar',
+      yAxisIndex: 1,
+      barWidth: 12,
+      data: report.months.map((month) => ({
+        value: month.entryCount,
+        itemStyle: { color: '#E6D5B8', borderRadius: [5, 5, 0, 0], opacity: 0.72 },
+      })),
+    },
+    {
+      name: '平均心情',
+      type: 'line',
+      data: report.months.map((month) => month.averageMood),
+      connectNulls: false,
+      symbol: 'circle',
+      symbolSize: 7,
+      itemStyle: { color: sage, borderColor: '#fff', borderWidth: 2 },
+      lineStyle: { color: sage, width: 2 },
+    },
+    {
+      name: '平均睡眠质量',
+      type: 'line',
+      data: report.months.map((month) => month.averageSleepQuality),
+      connectNulls: false,
+      symbol: 'circle',
+      symbolSize: 6,
+      itemStyle: { color: '#8799C6', borderColor: '#fff', borderWidth: 2 },
+      lineStyle: { color: '#8799C6', width: 1.5, type: 'dashed' },
+    },
+  ],
+});

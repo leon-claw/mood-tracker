@@ -32,7 +32,7 @@ const normalizePoints = (value: unknown) => {
 const normalizeStringArray = (value: unknown) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
-const normalizeEntries = (value: unknown): LogEntry[] => {
+export const normalizeEntries = (value: unknown): LogEntry[] => {
   if (!Array.isArray(value)) {
     throw new Error('导入文件格式不正确：缺少 entries 数组。');
   }

@@ -34,7 +34,7 @@ assert.match(appSource, /apiBaseUrl: appConfig\.apiBaseUrl/);
 assert.match(appSource, /useBearerToken: true/);
 assert.match(appSource, /hasStoredCloudAuthToken/);
 assert.match(appSource, /useState<DataMode>\(\(\) => hasInitialCloudToken \? 'cloud' : 'local'\)/);
-assert.match(appSource, /useState\(\(\) => hasInitialCloudToken\)/);
+assert.equal(appSource.includes('isInitialCloudLoading'), false);
 assert.match(appSource, /hasLocalBusinessData/);
 assert.match(appSource, /DataSourceChoiceDialog/);
 assert.match(appSource, /AuthDialog/);

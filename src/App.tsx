@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { ChangeEvent } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
@@ -16,8 +16,8 @@ import { DataSourceChoiceDialog } from './components/DataSourceChoiceDialog';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { RecordFieldSettingsPage } from './components/RecordFieldSettingsPage';
 import { ReminderSettingsPage } from './components/ReminderSettingsPage';
+import { YearlyReportOverview } from './components/YearlyReportOverview';
 import {
-  CloudLoadingOverlay,
   GlobalToast,
   SyncStatusIcon,
   ToastMessage,
@@ -45,10 +45,19 @@ import {
   readLocalAppData,
   writeLocalAppData,
 } from './localDataStore';
-import { AuthUser, createCloudDataStore, hasStoredCloudAuthToken } from './cloudDataStore';
+import {
+  AuthUser,
+  CloudBootstrapData,
+  CloudChangesPayload,
+  CloudEntryChange,
+  createCloudDataStore,
+  EntryMonthSummary,
+  hasStoredCloudAuthToken,
+  YearlyReportData,
+} from './cloudDataStore';
 import { appConfig } from './appConfig';
 import { formatLocalDate, getCurrentDateContext, YearMonth } from './dateContext';
-import { getAvailableReportMonths } from './reportData';
+import { getAvailableReportMonths, getYearlyReportData } from './reportData';
 import { fetchUpdateManifest, isVersionNewer, UpdateManifest } from './updateCheck';
 import { exportJsonFile } from './androidExport';
 import {
@@ -97,6 +106,41 @@ const ANDROID_RELEASES_URL = 'https://github.com/leon-claw/mood-tracker/releases
 export const CLOUD_SYNC_BATCH_DELAY_MS = 10_000;
 
 const formatYearMonth = ({ year, month }: YearMonth) => `${year}年 ${month}月`;
+const formatMonthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}`;
+const getEntryMonthKey = (entry: Pick<LogEntry, 'date'>) => entry.date.slice(0, 7);
+
+const mergeMonthEntries = (current: LogEntry[], year: number, month: number, monthEntries: LogEntry[]) => {
+  const key = formatMonthKey(year, month);
+  return [
+    ...current.filter((entry) => getEntryMonthKey(entry) !== key),
+    ...monthEntries,
+  ].sort((left, right) => left.date.localeCompare(right.date));
+};
+
+const mergeChangedEntries = (current: LogEntry[], changed: LogEntry[]) => {
+  const changedByDate = new Map(changed.map((entry) => [entry.date, entry]));
+  return [
+    ...current.filter((entry) => !changedByDate.has(entry.date)),
+    ...changed,
+  ].sort((left, right) => left.date.localeCompare(right.date));
+};
+
+const getLocalMonthSummaries = (entries: LogEntry[]): EntryMonthSummary[] =>
+  getAvailableReportMonths(entries).map(({ year, month }) => ({
+    year,
+    month,
+    count: entries.filter((entry) => getEntryMonthKey(entry) === formatMonthKey(year, month)).length,
+  }));
+
+interface PendingCloudChanges {
+  entries: CloudEntryChange[];
+  userState?: CloudChangesPayload['userState'];
+  preferences?: AppPreferences;
+}
+
+const createPendingCloudChanges = (): PendingCloudChanges => ({ entries: [] });
+const hasPendingCloudChanges = (changes: PendingCloudChanges) =>
+  changes.entries.length > 0 || changes.userState !== undefined || changes.preferences !== undefined;
 
 const getOptionalNumber = (value: unknown) => typeof value === 'number' ? value : null;
 const formatScaleValue = (value: number | null) => value === null ? '未记录' : `${value}/10`;
@@ -117,6 +161,21 @@ const applyAppData = (
   setters.setUnlockedItems(normalized.unlockedItems);
   setters.setIsPremiumUnlocked(normalized.isPremiumUnlocked);
   setters.setPreferences(normalized.preferences);
+};
+
+const applyBootstrapData = (
+  data: CloudBootstrapData,
+  setters: {
+    setPoints: (points: number) => void;
+    setUnlockedItems: (items: string[]) => void;
+    setIsPremiumUnlocked: (value: boolean) => void;
+    setPreferences: (preferences: AppPreferences) => void;
+  }
+) => {
+  setters.setPoints(data.points);
+  setters.setUnlockedItems(data.unlockedItems);
+  setters.setIsPremiumUnlocked(data.isPremiumUnlocked);
+  setters.setPreferences(data.preferences);
 };
 
 export default function App() {
@@ -168,7 +227,12 @@ export default function App() {
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage>(null);
   const [syncRequestCount, setSyncRequestCount] = useState(0);
-  const [isInitialCloudLoading, setIsInitialCloudLoading] = useState(() => hasInitialCloudToken);
+  const [loadedMonthKeys, setLoadedMonthKeys] = useState<string[]>(() =>
+    dataMode === 'local' ? getAvailableReportMonths(initialLocalData.entries).map(({ year, month }) => formatMonthKey(year, month)) : []
+  );
+  const [cloudEntryMonths, setCloudEntryMonths] = useState<EntryMonthSummary[]>([]);
+  const [hasLoadedCloudEntryMonths, setHasLoadedCloudEntryMonths] = useState(false);
+  const [yearlyReports, setYearlyReports] = useState<Record<number, YearlyReportData>>({});
 
   const cloudStore = useMemo(() => createCloudDataStore(fetch, {
     apiBaseUrl: appConfig.apiBaseUrl,
@@ -185,6 +249,9 @@ export default function App() {
   const [pendingDelete, setPendingDelete] = useState<{ id: string; closeCalendarEditor?: boolean } | null>(null);
   const calendarTransitionHasMounted = useRef(false);
   const cloudBatchTimerRef = useRef<number | null>(null);
+  const pendingCloudChangesRef = useRef<PendingCloudChanges>(createPendingCloudChanges());
+  const loadingMonthKeysRef = useRef(new Set<string>());
+  const loadingYearKeysRef = useRef(new Set<number>());
   const dataModeRef = useRef<DataMode>(dataMode);
   const appDataRef = useRef<AppExportData>(initialLocalData);
   const preferencesRef = useRef(preferences);
@@ -220,7 +287,6 @@ export default function App() {
 
     const restoreSession = async () => {
       if (!showCloudAccount || !hasInitialCloudToken) {
-        setIsInitialCloudLoading(false);
         return;
       }
 
@@ -233,17 +299,21 @@ export default function App() {
           return;
         }
 
-        setAuthUser(user);
-        const cloudData = await cloudStore.getData();
+        const [bootstrap, monthEntries] = await Promise.all([
+          cloudStore.getBootstrap(),
+          cloudStore.getEntriesByMonth(initialDateContext.year, initialDateContext.month),
+        ]);
         if (isCancelled) return;
-        applyAppData(cloudData, {
-          setEntries,
+        applyBootstrapData(bootstrap, {
           setPoints,
           setUnlockedItems,
           setIsPremiumUnlocked,
           setPreferences,
         });
+        setEntries(monthEntries);
+        setLoadedMonthKeys([formatMonthKey(initialDateContext.year, initialDateContext.month)]);
         clearLocalAppData();
+        setAuthUser(user);
         setDataMode('cloud');
       } catch (error) {
         if (!isCancelled) {
@@ -252,8 +322,6 @@ export default function App() {
             message: error instanceof Error ? error.message : '云端数据拉取失败，请稍后再试。',
           });
         }
-      } finally {
-        if (!isCancelled) setIsInitialCloudLoading(false);
       }
     };
 
@@ -261,7 +329,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [cloudStore, hasInitialCloudToken, showCloudAccount]);
+  }, [cloudStore, hasInitialCloudToken, initialDateContext.month, initialDateContext.year, showCloudAccount]);
 
   useEffect(() => {
     let isDisposed = false;
@@ -341,7 +409,7 @@ export default function App() {
   }, [isNativeMobile]);
 
   useEffect(() => {
-    if (!isNativeMobile || isInitialCloudLoading) return;
+    if (!isNativeMobile) return;
 
     let isCancelled = false;
     void syncCheckInReminderSchedule(preferences.reminders).catch((error) => {
@@ -356,7 +424,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [isInitialCloudLoading, isNativeMobile, preferences.reminders]);
+  }, [isNativeMobile, preferences.reminders]);
 
   useEffect(() => {
     if (!isNativeMobile || !isReminderSettingsOpen) return;
@@ -476,10 +544,14 @@ export default function App() {
     setToast({ type, message });
   };
 
-  const cancelScheduledCloudSync = () => {
-    if (cloudBatchTimerRef.current === null) return;
-    window.clearTimeout(cloudBatchTimerRef.current);
-    cloudBatchTimerRef.current = null;
+  const cancelScheduledCloudSync = (discardPendingChanges = false) => {
+    if (cloudBatchTimerRef.current !== null) {
+      window.clearTimeout(cloudBatchTimerRef.current);
+      cloudBatchTimerRef.current = null;
+    }
+    if (discardPendingChanges) {
+      pendingCloudChangesRef.current = createPendingCloudChanges();
+    }
   };
 
   const scheduleCloudSync = () => {
@@ -489,23 +561,103 @@ export default function App() {
       cloudBatchTimerRef.current = null;
       if (dataModeRef.current !== 'cloud') return;
 
-      const currentData = appDataRef.current;
-      const batchSnapshot: AppExportData = {
-        entries: currentData.entries.map((entry) => ({
-          ...entry,
-          values: { ...entry.values },
-        })),
-        points: currentData.points,
-        unlockedItems: [...currentData.unlockedItems],
-        isPremiumUnlocked: currentData.isPremiumUnlocked,
-        preferences: normalizeAppPreferences(currentData.preferences),
-      };
+      const batch = pendingCloudChangesRef.current;
+      pendingCloudChangesRef.current = createPendingCloudChanges();
+      if (!hasPendingCloudChanges(batch)) return;
 
-      void cloudStore.replaceData(batchSnapshot).catch(() => {
-        // The cloud store reports the failure through the global toast.
+      void cloudStore.applyChanges(batch).then((result) => {
+        const newerChanges = pendingCloudChangesRef.current;
+        const pendingDates = new Set(newerChanges.entries.map((change) => change.date));
+        const confirmedEntries = result.entries.filter((entry) => !pendingDates.has(entry.date));
+        if (confirmedEntries.length > 0) {
+          const nextEntries = mergeChangedEntries(appDataRef.current.entries, confirmedEntries);
+          appDataRef.current = { ...appDataRef.current, entries: nextEntries };
+          setEntries(nextEntries);
+        }
+        if (result.bootstrap) {
+          if (!newerChanges.userState) {
+            appDataRef.current = {
+              ...appDataRef.current,
+              points: result.bootstrap.points,
+              unlockedItems: result.bootstrap.unlockedItems,
+              isPremiumUnlocked: result.bootstrap.isPremiumUnlocked,
+            };
+            setPoints(result.bootstrap.points);
+            setUnlockedItems(result.bootstrap.unlockedItems);
+            setIsPremiumUnlocked(result.bootstrap.isPremiumUnlocked);
+          }
+          if (!newerChanges.preferences) {
+            preferencesRef.current = result.bootstrap.preferences;
+            appDataRef.current = { ...appDataRef.current, preferences: result.bootstrap.preferences };
+            setPreferences(result.bootstrap.preferences);
+          }
+        }
+      }).catch(() => {
+        const queued = pendingCloudChangesRef.current;
+        const entriesByDate = new Map(batch.entries.map((change) => [change.date, change]));
+        queued.entries.forEach((change) => entriesByDate.set(change.date, change));
+        pendingCloudChangesRef.current = {
+          entries: [...entriesByDate.values()],
+          userState: queued.userState || batch.userState,
+          preferences: queued.preferences || batch.preferences,
+        };
+        scheduleCloudSync();
       });
     }, CLOUD_SYNC_BATCH_DELAY_MS);
   };
+
+  const queueCloudChanges = (changes: CloudChangesPayload) => {
+    if (dataModeRef.current !== 'cloud') return;
+    const pending = pendingCloudChangesRef.current;
+    const entriesByDate = new Map(pending.entries.map((change) => [change.date, change]));
+    changes.entries?.forEach((change) => entriesByDate.set(change.date, change));
+    pendingCloudChangesRef.current = {
+      entries: [...entriesByDate.values()],
+      userState: changes.userState || pending.userState,
+      preferences: changes.preferences || pending.preferences,
+    };
+    scheduleCloudSync();
+  };
+
+  const loadCloudMonth = useCallback(async (year: number, month: number, force = false) => {
+    if (dataModeRef.current !== 'cloud') return;
+    const key = formatMonthKey(year, month);
+    if (!force && (loadedMonthKeys.includes(key) || loadingMonthKeysRef.current.has(key))) return;
+    loadingMonthKeysRef.current.add(key);
+    try {
+      const monthEntries = await cloudStore.getEntriesByMonth(year, month);
+      setEntries((current) => mergeMonthEntries(current, year, month, monthEntries));
+      setLoadedMonthKeys((current) => current.includes(key) ? current : [...current, key]);
+    } catch {
+      // The cloud store forwards backend errors to the global toast.
+    } finally {
+      loadingMonthKeysRef.current.delete(key);
+    }
+  }, [cloudStore, loadedMonthKeys]);
+
+  const loadCloudEntryMonths = useCallback(async (force = false) => {
+    if (dataModeRef.current !== 'cloud' || (!force && hasLoadedCloudEntryMonths)) return;
+    try {
+      setCloudEntryMonths(await cloudStore.getEntryMonths());
+      setHasLoadedCloudEntryMonths(true);
+    } catch {
+      // The cloud store forwards backend errors to the global toast.
+    }
+  }, [cloudStore, hasLoadedCloudEntryMonths]);
+
+  const loadCloudYearlyReport = useCallback(async (year: number, force = false) => {
+    if (dataModeRef.current !== 'cloud') return;
+    if ((!force && yearlyReports[year]) || loadingYearKeysRef.current.has(year)) return;
+    loadingYearKeysRef.current.add(year);
+    try {
+      const report = await cloudStore.getYearlyReport(year);
+      setYearlyReports((current) => ({ ...current, [year]: report }));
+    } catch {
+      // The cloud store forwards backend errors to the global toast.
+    } finally {
+      loadingYearKeysRef.current.delete(year);
+    }
+  }, [cloudStore, yearlyReports]);
 
   const handleAuthenticated = async (user: AuthUser) => {
     setAuthUser(user);
@@ -514,29 +666,34 @@ export default function App() {
       return;
     }
 
-    setIsInitialCloudLoading(true);
     try {
-      const cloudData = await cloudStore.getData();
-      applyAppData(cloudData, {
-        setEntries,
+      const current = getCurrentDateContext();
+      const [bootstrap, monthEntries] = await Promise.all([
+        cloudStore.getBootstrap(),
+        cloudStore.getEntriesByMonth(current.year, current.month),
+      ]);
+      applyBootstrapData(bootstrap, {
         setPoints,
         setUnlockedItems,
         setIsPremiumUnlocked,
         setPreferences,
       });
+      setEntries(monthEntries);
+      setLoadedMonthKeys([formatMonthKey(current.year, current.month)]);
+      setCloudEntryMonths([]);
+      setHasLoadedCloudEntryMonths(false);
+      setYearlyReports({});
       clearLocalAppData();
       setDataMode('cloud');
       setDataStatus('success', '已进入云端同步模式。');
     } catch {
       // The cloud store forwards backend errors to the global toast.
-    } finally {
-      setIsInitialCloudLoading(false);
     }
   };
 
   const handleUseLocalData = async () => {
     setIsSourceChoiceBusy(true);
-    cancelScheduledCloudSync();
+    cancelScheduledCloudSync(true);
     try {
       const uploaded = await cloudStore.replaceData(readLocalAppData());
       applyAppData(uploaded, {
@@ -548,6 +705,10 @@ export default function App() {
       });
       clearLocalAppData();
       setDataMode('cloud');
+      setLoadedMonthKeys(getAvailableReportMonths(uploaded.entries).map(({ year, month }) => formatMonthKey(year, month)));
+      setCloudEntryMonths(getLocalMonthSummaries(uploaded.entries));
+      setHasLoadedCloudEntryMonths(true);
+      setYearlyReports({});
       setPendingSourceUser(null);
       setDataStatus('success', '本地数据已上传并覆盖云端。');
     } catch {
@@ -559,16 +720,24 @@ export default function App() {
 
   const handleUseCloudData = async () => {
     setIsSourceChoiceBusy(true);
-    cancelScheduledCloudSync();
+    cancelScheduledCloudSync(true);
     try {
-      const cloudData = await cloudStore.getData();
-      applyAppData(cloudData, {
-        setEntries,
+      const current = getCurrentDateContext();
+      const [bootstrap, monthEntries] = await Promise.all([
+        cloudStore.getBootstrap(),
+        cloudStore.getEntriesByMonth(current.year, current.month),
+      ]);
+      applyBootstrapData(bootstrap, {
         setPoints,
         setUnlockedItems,
         setIsPremiumUnlocked,
         setPreferences,
       });
+      setEntries(monthEntries);
+      setLoadedMonthKeys([formatMonthKey(current.year, current.month)]);
+      setCloudEntryMonths([]);
+      setHasLoadedCloudEntryMonths(false);
+      setYearlyReports({});
       clearLocalAppData();
       setDataMode('cloud');
       setPendingSourceUser(null);
@@ -586,17 +755,23 @@ export default function App() {
       setAuthUser(null);
       setPendingSourceUser(null);
       setDataMode('local');
+      pendingCloudChangesRef.current = createPendingCloudChanges();
     } catch (error) {
       setDataStatus('error', error instanceof Error ? error.message : '退出登录失败，请稍后再试。');
     }
   };
 
   const handleLogout = async () => {
-    cancelScheduledCloudSync();
+    cancelScheduledCloudSync(true);
     try {
       await cloudStore.logout();
       setAuthUser(null);
       setDataMode('local');
+      pendingCloudChangesRef.current = createPendingCloudChanges();
+      setLoadedMonthKeys([]);
+      setCloudEntryMonths([]);
+      setHasLoadedCloudEntryMonths(false);
+      setYearlyReports({});
       clearLocalAppData();
       const emptyData = readLocalAppData();
       applyAppData(emptyData, {
@@ -610,6 +785,16 @@ export default function App() {
     } catch (error) {
       setDataStatus('error', error instanceof Error ? error.message : '退出登录失败，请稍后再试。');
     }
+  };
+
+  const invalidateYearlyReportForDate = (date: string) => {
+    const year = Number(date.slice(0, 4));
+    setYearlyReports((current) => {
+      if (!current[year]) return current;
+      const next = { ...current };
+      delete next[year];
+      return next;
+    });
   };
 
   // Apply record changes immediately, then let the shared cloud batch persist them.
@@ -631,8 +816,29 @@ export default function App() {
       points: nextPoints,
     };
     setEntries(nextEntries);
+    invalidateYearlyReportForDate(optimisticEntry.date);
     if (!existingEntry) setPoints(nextPoints);
-    scheduleCloudSync();
+    if (!existingEntry) {
+      setCloudEntryMonths((current) => {
+        const year = Number(newEntryData.date.slice(0, 4));
+        const month = Number(newEntryData.date.slice(5, 7));
+        const existingMonth = current.find((item) => item.year === year && item.month === month);
+        const next = existingMonth
+          ? current.map((item) => item === existingMonth ? { ...item, count: item.count + 1 } : item)
+          : [...current, { year, month, count: 1 }];
+        return next.sort((left, right) => (right.year * 12 + right.month) - (left.year * 12 + left.month));
+      });
+    }
+    queueCloudChanges({
+      entries: [{ operation: 'upsert', date: optimisticEntry.date, values: optimisticEntry.values }],
+      ...(!existingEntry ? {
+        userState: {
+          points: nextPoints,
+          unlockedItems: currentData.unlockedItems,
+          isPremiumUnlocked: currentData.isPremiumUnlocked,
+        },
+      } : {}),
+    });
   };
 
   const requestDeleteEntry = (id: string, options?: { closeCalendarEditor?: boolean }) => {
@@ -643,18 +849,30 @@ export default function App() {
     if (!pendingDelete) return;
     const deleteRequest = pendingDelete;
     const currentData = appDataRef.current;
+    const deletedEntry = currentData.entries.find((entry) => entry.id === deleteRequest.id);
     const nextEntries = currentData.entries.filter((entry) => entry.id !== deleteRequest.id);
 
     appDataRef.current = { ...currentData, entries: nextEntries };
     setEntries(nextEntries);
+    if (deletedEntry) invalidateYearlyReportForDate(deletedEntry.date);
     if (deleteRequest.closeCalendarEditor) setCalendarEditorDate(null);
     setPendingDelete(null);
-    scheduleCloudSync();
+    if (deletedEntry) {
+      setCloudEntryMonths((current) => current
+        .map((item) => getEntryMonthKey(deletedEntry) === formatMonthKey(item.year, item.month)
+          ? { ...item, count: Math.max(0, item.count - 1) }
+          : item)
+        .filter((item) => item.count > 0));
+      queueCloudChanges({ entries: [{ operation: 'delete', date: deletedEntry.date }] });
+    }
   };
 
   const handleExportData = async () => {
-    const json = createExportJson(getCurrentAppData());
     try {
+      const exportData = dataMode === 'cloud'
+        ? await cloudStore.getExportData()
+        : getCurrentAppData();
+      const json = createExportJson(exportData);
       await exportJsonFile({
         json,
         filename: `mood-tracker-export-${formatLocalDate()}.json`,
@@ -672,7 +890,7 @@ export default function App() {
 
     try {
       const imported = parseImportJson(await file.text());
-      cancelScheduledCloudSync();
+      cancelScheduledCloudSync(true);
       const nextData = dataMode === 'cloud' ? await cloudStore.replaceData(imported) : imported;
       applyAppData(nextData, {
         setEntries,
@@ -681,6 +899,11 @@ export default function App() {
         setIsPremiumUnlocked,
         setPreferences,
       });
+      const importedMonths = getLocalMonthSummaries(nextData.entries);
+      setLoadedMonthKeys(importedMonths.map(({ year, month }) => formatMonthKey(year, month)));
+      setCloudEntryMonths(dataMode === 'cloud' ? importedMonths : []);
+      setHasLoadedCloudEntryMonths(dataMode === 'cloud');
+      setYearlyReports({});
       setDataStatus('success', `已导入 ${imported.entries.length} 条记录。`);
     } catch (error) {
       setDataStatus('error', error instanceof Error ? error.message : '导入失败，请检查 JSON 文件。');
@@ -707,7 +930,7 @@ export default function App() {
       preferences: nextPreferences,
     };
     setPreferences(nextPreferences);
-    scheduleCloudSync();
+    queueCloudChanges({ preferences: nextPreferences });
   };
 
   const commitPreferences = (nextPreferences: AppPreferences) => {
@@ -717,7 +940,7 @@ export default function App() {
       preferences: nextPreferences,
     };
     setPreferences(nextPreferences);
-    scheduleCloudSync();
+    queueCloudChanges({ preferences: nextPreferences });
   };
 
   const handleToggleReminders = async (enabled: boolean) => {
@@ -803,6 +1026,45 @@ export default function App() {
     }));
   };
 
+  const monthSummaries = useMemo(
+    () => dataMode === 'cloud' ? cloudEntryMonths : getLocalMonthSummaries(entries),
+    [cloudEntryMonths, dataMode, entries]
+  );
+
+  useEffect(() => {
+    if (dataMode !== 'cloud' || !authUser) return;
+    const current = getCurrentDateContext(new Date(`${currentDate}T12:00:00`));
+    void loadCloudMonth(current.year, current.month);
+  }, [authUser, currentDate, dataMode, loadCloudMonth]);
+
+  useEffect(() => {
+    if (dataMode !== 'cloud' || !authUser) return;
+    if (activeTab === 'log' || activeTab === 'report') {
+      void loadCloudEntryMonths();
+    }
+    if (activeTab === 'calendar') {
+      void loadCloudMonth(calendarYear, calendarMonth);
+    }
+    if (activeTab === 'report' && reportRange === 'month') {
+      void loadCloudMonth(selectedYear, selectedMonth);
+    }
+    if (activeTab === 'report' && reportRange === 'year') {
+      void loadCloudYearlyReport(selectedYear);
+    }
+  }, [
+    activeTab,
+    authUser,
+    calendarMonth,
+    calendarYear,
+    dataMode,
+    loadCloudEntryMonths,
+    loadCloudMonth,
+    loadCloudYearlyReport,
+    reportRange,
+    selectedMonth,
+    selectedYear,
+  ]);
+
   const todayEntry = useMemo(() => {
     return entries.find((entry) => entry.date === currentDate);
   }, [currentDate, entries]);
@@ -815,17 +1077,28 @@ export default function App() {
   const isSecondarySettingsOpen = isRecordFieldSettingsOpen || isReminderSettingsOpen;
 
   const monthOptions = useMemo(() => {
-    const availableMonths = getAvailableReportMonths(entries);
     const currentYearMonth = getCurrentDateContext(new Date(`${currentDate}T12:00:00`));
-    const months = availableMonths.length > 0
-      ? availableMonths
+    const months = monthSummaries.length > 0
+      ? monthSummaries
       : [{ year: currentYearMonth.year, month: currentYearMonth.month }];
 
     return months.map((yearMonth) => ({
       ...yearMonth,
       label: formatYearMonth(yearMonth),
     }));
-  }, [currentDate, entries]);
+  }, [currentDate, monthSummaries]);
+
+  const yearOptions = useMemo(() => {
+    const years = [...new Set(monthOptions.map((option) => option.year))];
+    return years.length > 0 ? years : [selectedYear];
+  }, [monthOptions, selectedYear]);
+  const totalEntryCount = monthSummaries.reduce((total, month) => total + month.count, 0);
+  const nextUnloadedMonth = dataMode === 'cloud'
+    ? monthSummaries.find((month) => !loadedMonthKeys.includes(formatMonthKey(month.year, month.month)))
+    : undefined;
+  const yearlyReport = dataMode === 'cloud'
+    ? yearlyReports[selectedYear] || getYearlyReportData([], selectedYear)
+    : getYearlyReportData(entries, selectedYear);
 
   return (
     <div id="app-viewport-wrapper" className="h-dvh overflow-hidden bg-[#EAE7E2] flex items-center justify-center p-0 sm:pt-6 sm:pb-0 md:pt-10">
@@ -838,7 +1111,6 @@ export default function App() {
         <div className="hidden sm:block absolute top-2 left-1/2 -translate-x-1/2 w-24 h-4 bg-white rounded-full border border-[#F2EDE9] z-40"></div>
 
         <GlobalToast toast={toast} />
-        <CloudLoadingOverlay isVisible={isInitialCloudLoading} />
 
         {/* Scrollable Content Pane */}
         <div
@@ -857,7 +1129,7 @@ export default function App() {
                   <SyncStatusIcon isSyncing={isCloudSyncing} />
                 </h2>
                 <span className="text-xs bg-[#E6F0E6] text-[#8FA88B] font-semibold px-2.5 py-1 rounded-full">
-                  共 {entries.length} 篇
+                  共 {dataMode === 'cloud' && hasLoadedCloudEntryMonths ? totalEntryCount : entries.length} 篇
                 </span>
               </div>
 
@@ -1000,9 +1272,24 @@ export default function App() {
                 {entries.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <span className="text-4xl mb-2">🌿</span>
-                    <h3 className="font-semibold text-gray-600">还没有任何打卡记录</h3>
-                    <p className="text-xs text-gray-400 mt-1 max-w-[200px]">点击下方中间的绿色按钮，记录下你的第一篇心情吧！</p>
+                    <h3 className="font-semibold text-gray-600">
+                      {nextUnloadedMonth ? '当前月份还没有记录' : '还没有任何打卡记录'}
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1 max-w-[210px]">
+                      {nextUnloadedMonth ? '可以继续加载更早月份，或记录今天的状态。' : '点击下方中间的绿色按钮，记录下你的第一篇心情吧！'}
+                    </p>
                   </div>
+                )}
+
+                {nextUnloadedMonth && (
+                  <button
+                    type="button"
+                    onClick={() => void loadCloudMonth(nextUnloadedMonth.year, nextUnloadedMonth.month)}
+                    className="mx-auto mt-1 flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#D8E7D6] bg-white px-5 text-xs font-bold text-[#6E876B] shadow-xs transition-all hover:bg-[#E6F0E6]/50 active:scale-95"
+                  >
+                    <ChevronDown size={14} />
+                    加载 {nextUnloadedMonth.year}年{nextUnloadedMonth.month}月
+                  </button>
                 )}
               </div>
             </div>
@@ -1049,51 +1336,74 @@ export default function App() {
                   onClick={() => setIsMonthDropdownOpen(!isMonthDropdownOpen)}
                   className="flex items-center gap-1 text-sm font-semibold text-gray-600 hover:text-gray-800 transition-colors bg-white px-3 py-1.5 rounded-full border border-gray-100 shadow-xs w-fit cursor-pointer"
                 >
-                  <span>{selectedYear}年 {selectedMonth}月</span>
+                  <span>{reportRange === 'year' ? `${selectedYear}年` : `${selectedYear}年 ${selectedMonth}月`}</span>
                   <ChevronDown size={14} className={`transition-transform duration-200 ${isMonthDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {isMonthDropdownOpen && (
                   <div className="absolute left-0 mt-1.5 w-40 bg-white border border-gray-100 rounded-2xl shadow-lg py-1.5 z-30 animate-in fade-in slide-in-from-top-1">
-                    {monthOptions.map((opt) => (
-                      <button
-                        key={opt.label}
-                        onClick={() => {
-                          setSelectedYear(opt.year);
-                          setSelectedMonth(opt.month);
-                          setIsMonthDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-4 py-2 text-xs font-medium transition-colors ${
-                          selectedYear === opt.year && selectedMonth === opt.month
-                            ? 'bg-green-50 text-green-700'
-                            : 'text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                    {reportRange === 'month'
+                      ? monthOptions.map((opt) => (
+                        <button
+                          key={opt.label}
+                          onClick={() => {
+                            setSelectedYear(opt.year);
+                            setSelectedMonth(opt.month);
+                            setIsMonthDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-xs font-medium transition-colors ${
+                            selectedYear === opt.year && selectedMonth === opt.month
+                              ? 'bg-green-50 text-green-700'
+                              : 'text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))
+                      : yearOptions.map((year) => (
+                        <button
+                          key={year}
+                          onClick={() => {
+                            setSelectedYear(year);
+                            setIsMonthDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-xs font-medium transition-colors ${
+                            selectedYear === year
+                              ? 'bg-green-50 text-green-700'
+                              : 'text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {year}年
+                        </button>
+                      ))}
                   </div>
                 )}
               </div>
 
               {/* Dashboard report cards rendering */}
-              <MoodFlowChart
-                entries={entries}
-                selectedYear={selectedYear}
-                selectedMonth={selectedMonth}
-              />
+              {reportRange === 'year' ? (
+                <YearlyReportOverview report={yearlyReport} />
+              ) : (
+                <>
+                  <MoodFlowChart
+                    entries={entries}
+                    selectedYear={selectedYear}
+                    selectedMonth={selectedMonth}
+                  />
 
-              <MoodDistribution
-                entries={entries}
-                selectedYear={selectedYear}
-                selectedMonth={selectedMonth}
-              />
+                  <MoodDistribution
+                    entries={entries}
+                    selectedYear={selectedYear}
+                    selectedMonth={selectedMonth}
+                  />
 
-              <SleepMoodChart
-                entries={entries}
-                selectedYear={selectedYear}
-                selectedMonth={selectedMonth}
-              />
+                  <SleepMoodChart
+                    entries={entries}
+                    selectedYear={selectedYear}
+                    selectedMonth={selectedMonth}
+                  />
+                </>
+              )}
             </div>
           )}
 

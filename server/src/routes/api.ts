@@ -47,6 +47,13 @@ const entrySchema = z.object({
   values: valuesSchema,
 });
 
+const monthSchema = z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/);
+const yearSchema = z.coerce.number().int().min(2000).max(2100);
+const entryChangeSchema = z.discriminatedUnion('operation', [
+  z.object({ operation: z.literal('upsert'), date: dateSchema, values: valuesSchema }),
+  z.object({ operation: z.literal('delete'), date: dateSchema }),
+]);
+
 const stateSchema = z.object({
   points: z.number().optional().default(0),
   unlockedItems: z.array(z.string()).optional().default([]),
@@ -60,6 +67,15 @@ const preferencesSchema = z.object({
     times: z.array(z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)).max(MAX_REMINDER_TIMES),
   }).optional(),
 });
+
+const changesSchema = z.object({
+  entries: z.array(entryChangeSchema).max(62).optional().default([]),
+  userState: stateSchema.optional(),
+  preferences: preferencesSchema.optional(),
+}).refine(
+  (value) => value.entries.length > 0 || value.userState !== undefined || value.preferences !== undefined,
+  { message: '没有需要同步的修改。' }
+);
 
 class ApiError extends Error {
   constructor(
@@ -199,6 +215,11 @@ export const createApiRouter = ({
     response.json(await repository.getSyncData(user.id));
   }));
 
+  router.get('/bootstrap', requireAuth, asyncHandler(async (request, response) => {
+    const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
+    response.json(await repository.getBootstrapData(user.id));
+  }));
+
   router.put('/sync', requireAuth, asyncHandler(async (request, response) => {
     const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
     const data = normalizeSyncData(request.body);
@@ -207,8 +228,20 @@ export const createApiRouter = ({
 
   router.get('/entries', requireAuth, asyncHandler(async (request, response) => {
     const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
-    const data = await repository.getSyncData(user.id);
-    response.json({ entries: data.entries });
+    const month = parseBody(monthSchema, request.query.month);
+    const [year, monthNumber] = month.split('-').map(Number);
+    response.json({ entries: await repository.getEntriesByMonth(user.id, year, monthNumber) });
+  }));
+
+  router.get('/entry-months', requireAuth, asyncHandler(async (request, response) => {
+    const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
+    response.json({ months: await repository.getEntryMonths(user.id) });
+  }));
+
+  router.get('/reports/yearly', requireAuth, asyncHandler(async (request, response) => {
+    const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
+    const year = parseBody(yearSchema, request.query.year);
+    response.json(await repository.getYearlyReport(user.id, year));
   }));
 
   router.post('/entries', requireAuth, asyncHandler(async (request, response) => {
@@ -222,6 +255,39 @@ export const createApiRouter = ({
     const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
     await repository.deleteEntry(user.id, request.params.id);
     response.json({ ok: true });
+  }));
+
+  router.post('/changes', requireAuth, asyncHandler(async (request, response) => {
+    const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
+    const changes = parseBody(changesSchema, request.body);
+    const changedEntries = [];
+    const deletedDates: string[] = [];
+
+    for (const change of changes.entries) {
+      if (change.operation === 'delete') {
+        await repository.deleteEntryByDate(user.id, change.date);
+        deletedDates.push(change.date);
+      } else {
+        changedEntries.push(await repository.upsertEntry(
+          user.id,
+          change.date,
+          sanitizeServerLogValues(change.values)
+        ));
+      }
+    }
+
+    if (changes.userState) await repository.updateUserState(user.id, changes.userState);
+    if (changes.preferences) {
+      await repository.updatePreferences(user.id, normalizeAppPreferences(changes.preferences));
+    }
+
+    response.json({
+      entries: changedEntries,
+      deletedDates,
+      bootstrap: changes.userState || changes.preferences
+        ? await repository.getBootstrapData(user.id)
+        : undefined,
+    });
   }));
 
   router.put('/user-state', requireAuth, asyncHandler(async (request, response) => {

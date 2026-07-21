@@ -105,16 +105,48 @@ assert.equal(localStorage.getItem('mood_tracker_preferences'), null);
 const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
 const fetcher: typeof fetch = async (input, init) => {
   calls.push({ input, init });
-  if (String(input).endsWith('/api/captcha')) {
+  const url = String(input);
+  if (url.endsWith('/api/captcha')) {
     return new Response(JSON.stringify({ captchaId: 'captcha-1', svg: '<svg></svg>', expiresAt: '2026-07-08T00:00:00.000Z' }));
   }
-  if (String(input).endsWith('/api/auth/login')) {
+  if (url.endsWith('/api/auth/login')) {
     return new Response(JSON.stringify({ user: { id: 'user-1', email: 'a@example.com' }, token: 'token-1' }));
   }
-  if (String(input).endsWith('/api/sync')) {
+  if (url.endsWith('/api/bootstrap')) {
+    return new Response(JSON.stringify({
+      points: data.points,
+      unlockedItems: data.unlockedItems,
+      isPremiumUnlocked: data.isPremiumUnlocked,
+      preferences: data.preferences,
+    }));
+  }
+  if (url.includes('/api/entries?month=')) {
+    return new Response(JSON.stringify({ entries: data.entries }));
+  }
+  if (url.endsWith('/api/entry-months')) {
+    return new Response(JSON.stringify({ months: [{ year: 2026, month: 7, count: 1 }] }));
+  }
+  if (url.includes('/api/reports/yearly?year=')) {
+    return new Response(JSON.stringify({
+      year: 2026,
+      months: Array.from({ length: 12 }, (_, index) => ({
+        month: index + 1,
+        entryCount: index === 6 ? 1 : 0,
+        averageMood: index === 6 ? 9 : null,
+        averageSleepQuality: index === 6 ? 8 : null,
+      })),
+    }));
+  }
+  if (url.endsWith('/api/changes')) {
+    return new Response(JSON.stringify({ entries: data.entries, deletedDates: [] }));
+  }
+  if (url.endsWith('/api/export')) {
+    return new Response(JSON.stringify({ data }));
+  }
+  if (url.endsWith('/api/sync')) {
     return new Response(JSON.stringify(data));
   }
-  if (String(input).endsWith('/api/entries')) {
+  if (url.endsWith('/api/entries')) {
     return new Response(JSON.stringify({ entry: data.entries[0] }));
   }
   if (String(input).endsWith('/api/preferences')) {
@@ -154,6 +186,36 @@ assert.equal(calls[1].init?.headers && (calls[1].init.headers as Record<string, 
 assert.equal(JSON.parse(String(calls[1].init?.body)).email, 'A@EXAMPLE.COM');
 assert.equal(JSON.parse(String(calls[2].init?.body)).entries[0].id, entryId);
 assert.deepEqual(JSON.parse(String(calls[4].init?.body)), data.preferences);
+
+calls.length = 0;
+const monthlyCloud = createCloudDataStore(fetcher);
+assert.deepEqual(await monthlyCloud.getBootstrap(), {
+  points: 80,
+  unlockedItems: ['plant_succulent'],
+  isPremiumUnlocked: true,
+  preferences: data.preferences,
+});
+assert.deepEqual(await monthlyCloud.getEntriesByMonth(2026, 7), data.entries);
+assert.deepEqual(await monthlyCloud.getEntryMonths(), [{ year: 2026, month: 7, count: 1 }]);
+assert.equal((await monthlyCloud.getYearlyReport(2026)).months[6].averageMood, 9);
+assert.deepEqual(await monthlyCloud.applyChanges({
+  entries: [{ operation: 'upsert', date: data.entries[0].date, values: data.entries[0].values }],
+}), {
+  entries: data.entries,
+  deletedDates: [],
+});
+assert.deepEqual(await monthlyCloud.getExportData(), data);
+assert.deepEqual(
+  calls.map((call) => [String(call.input), call.init?.method || 'GET']),
+  [
+    ['/api/bootstrap', 'GET'],
+    ['/api/entries?month=2026-07', 'GET'],
+    ['/api/entry-months', 'GET'],
+    ['/api/reports/yearly?year=2026', 'GET'],
+    ['/api/changes', 'POST'],
+    ['/api/export', 'GET'],
+  ]
+);
 
 calls.length = 0;
 const bearerCloud = createCloudDataStore(fetcher, {

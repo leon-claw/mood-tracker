@@ -2,7 +2,13 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { normalizeSyncData, ServerLogEntry, SyncData } from '../domain/portableData';
 import { sanitizeServerLogValues, ServerLogValues } from '../domain/logValues';
 import { normalizeDatabaseEntryId } from '../domain/entryId';
-import { AppRepository, UserStateRecord } from './types';
+import {
+  AppRepository,
+  BootstrapData,
+  EntryMonthSummary,
+  UserStateRecord,
+  YearlyReportData,
+} from './types';
 import {
   AppPreferences,
   createDefaultAppPreferences,
@@ -13,6 +19,13 @@ const dateStringToDate = (date: string) => new Date(`${date}T00:00:00.000Z`);
 const dateToDateString = (date: Date) => date.toISOString().slice(0, 10);
 const toStringArray = (value: unknown) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+const getMonthBounds = (year: number, month: number) => ({
+  start: new Date(Date.UTC(year, month - 1, 1)),
+  end: new Date(Date.UTC(year, month, 1)),
+});
+const average = (values: number[]) => values.length > 0
+  ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
+  : null;
 
 const emptyData = (): SyncData => ({
   entries: [],
@@ -73,6 +86,67 @@ export class PrismaRepository implements AppRepository {
       where: { id: userId },
       data: { passwordHash },
     });
+  }
+
+  async getBootstrapData(userId: string): Promise<BootstrapData> {
+    const state = await this.prisma.userState.findUnique({ where: { userId } });
+    return {
+      points: state?.points || 0,
+      unlockedItems: toStringArray(state?.unlockedItems),
+      isPremiumUnlocked: state?.isPremiumUnlocked === true,
+      preferences: normalizeAppPreferences(state?.preferences),
+    };
+  }
+
+  async getEntriesByMonth(userId: string, year: number, month: number) {
+    const { start, end } = getMonthBounds(year, month);
+    const entries = await this.prisma.logEntry.findMany({
+      where: { userId, date: { gte: start, lt: end } },
+      orderBy: { date: 'asc' },
+    });
+    return entries.map((entry) => this.toServerEntry(entry));
+  }
+
+  async getEntryMonths(userId: string): Promise<EntryMonthSummary[]> {
+    return this.prisma.$queryRaw<EntryMonthSummary[]>(Prisma.sql`
+      SELECT
+        EXTRACT(YEAR FROM "date")::int AS "year",
+        EXTRACT(MONTH FROM "date")::int AS "month",
+        COUNT(*)::int AS "count"
+      FROM "log_entries"
+      WHERE "user_id" = ${userId}::uuid
+      GROUP BY EXTRACT(YEAR FROM "date"), EXTRACT(MONTH FROM "date")
+      ORDER BY EXTRACT(YEAR FROM "date") DESC, EXTRACT(MONTH FROM "date") DESC
+    `);
+  }
+
+  async getYearlyReport(userId: string, year: number): Promise<YearlyReportData> {
+    const start = new Date(Date.UTC(year, 0, 1));
+    const end = new Date(Date.UTC(year + 1, 0, 1));
+    const entries = await this.prisma.logEntry.findMany({
+      where: { userId, date: { gte: start, lt: end } },
+      orderBy: { date: 'asc' },
+    });
+    const normalized = entries.map((entry) => this.toServerEntry(entry));
+    return {
+      year,
+      months: Array.from({ length: 12 }, (_, index) => {
+        const month = index + 1;
+        const monthEntries = normalized.filter((entry) => Number(entry.date.slice(5, 7)) === month);
+        const moodValues = monthEntries
+          .map((entry) => entry.values.moodLevel)
+          .filter((value): value is number => typeof value === 'number');
+        const sleepValues = monthEntries
+          .map((entry) => entry.values.sleepQuality)
+          .filter((value): value is number => typeof value === 'number');
+        return {
+          month,
+          entryCount: monthEntries.length,
+          averageMood: average(moodValues),
+          averageSleepQuality: average(sleepValues),
+        };
+      }),
+    };
   }
 
   async getSyncData(userId: string) {
@@ -153,6 +227,12 @@ export class PrismaRepository implements AppRepository {
   async deleteEntry(userId: string, entryId: string) {
     await this.prisma.logEntry.deleteMany({
       where: { userId, id: entryId },
+    });
+  }
+
+  async deleteEntryByDate(userId: string, date: string) {
+    await this.prisma.logEntry.deleteMany({
+      where: { userId, date: dateStringToDate(date) },
     });
   }
 

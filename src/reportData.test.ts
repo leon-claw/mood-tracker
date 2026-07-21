@@ -4,6 +4,7 @@ import {
   getMoodDistributionData,
   getMoodFlowData,
   getSleepMoodData,
+  getYearlyReportData,
 } from './reportData';
 import { INITIAL_DEMO_ENTRIES } from './data/mockData';
 import { LogEntry } from './types';
@@ -68,5 +69,21 @@ assert.deepEqual(availableMonths, [
   { year: 2025, month: 12 },
 ]);
 assert.deepEqual(getAvailableReportMonths([]), []);
+
+const yearly = getYearlyReportData(partialEntries, 2026);
+assert.equal(yearly.year, 2026);
+assert.equal(yearly.months.length, 12);
+assert.deepEqual(yearly.months[6], {
+  month: 7,
+  entryCount: 2,
+  averageMood: 9,
+  averageSleepQuality: 8,
+});
+assert.deepEqual(yearly.months[0], {
+  month: 1,
+  entryCount: 0,
+  averageMood: null,
+  averageSleepQuality: null,
+});
 
 console.log('report data tests passed');

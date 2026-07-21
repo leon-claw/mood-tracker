@@ -215,6 +215,74 @@ await loggedInAgent
     assert.equal(response.body.error.code, 'VALIDATION_ERROR');
   });
 
+await loggedInAgent.get('/api/bootstrap').expect(200).expect((response) => {
+  assert.equal(response.body.points, 500);
+  assert.equal(response.body.entries, undefined);
+  assert.deepEqual(response.body.preferences.reminders, {
+    enabled: true,
+    times: ['09:00', '21:30'],
+  });
+});
+
+await loggedInAgent.get('/api/entries').expect(400);
+await loggedInAgent.get('/api/entries?month=2026-07').expect(200).expect((response) => {
+  assert.equal(response.body.entries.length, 1);
+  assert.equal(response.body.entries[0].date, '2026-07-08');
+});
+
+await loggedInAgent
+  .post('/api/changes')
+  .send({
+    entries: [{
+      operation: 'upsert',
+      date: '2026-06-20',
+      values: { moodLevel: 7, sleepQuality: 6, journal: '六月记录' },
+    }],
+    userState: {
+      points: 550,
+      unlockedItems: ['plant_succulent', 'badge_focus'],
+      isPremiumUnlocked: true,
+    },
+  })
+  .expect(200)
+  .expect((response) => {
+    assert.equal(response.body.entries.length, 1);
+    assert.equal(response.body.entries[0].date, '2026-06-20');
+    assert.equal(response.body.bootstrap.points, 550);
+  });
+
+await loggedInAgent.get('/api/entry-months').expect(200).expect((response) => {
+  assert.deepEqual(response.body.months, [
+    { year: 2026, month: 7, count: 1 },
+    { year: 2026, month: 6, count: 1 },
+  ]);
+});
+
+await loggedInAgent.get('/api/reports/yearly?year=2026').expect(200).expect((response) => {
+  assert.equal(response.body.year, 2026);
+  assert.equal(response.body.months.length, 12);
+  assert.deepEqual(response.body.months[5], {
+    month: 6,
+    entryCount: 1,
+    averageMood: 7,
+    averageSleepQuality: 6,
+  });
+  assert.deepEqual(response.body.months[6], {
+    month: 7,
+    entryCount: 1,
+    averageMood: 5,
+    averageSleepQuality: 4,
+  });
+});
+
+await loggedInAgent
+  .post('/api/changes')
+  .send({ entries: [{ operation: 'delete', date: '2026-06-20' }] })
+  .expect(200)
+  .expect((response) => {
+    assert.deepEqual(response.body.deletedDates, ['2026-06-20']);
+  });
+
 await loggedInAgent.get('/api/export').expect(200).expect((response) => {
   assert.equal(response.body.app, 'mood-tracker');
   assert.equal(response.body.version, 1);
