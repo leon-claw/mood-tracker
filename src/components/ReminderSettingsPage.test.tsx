@@ -25,6 +25,7 @@ assert.ok(markup.includes('21:00'));
 assert.ok(markup.includes('每天提醒 2 次'));
 assert.ok(markup.includes('精确提醒权限未开启'));
 assert.ok(markup.includes('去开启'));
+assert.ok(markup.includes('建议将应用保留在后台运行'));
 assert.ok(markup.includes('aria-pressed="true"'));
 assert.ok(markup.includes('aria-label="提醒小时（24小时制）"'));
 assert.ok(markup.includes('aria-label="提醒分钟"'));

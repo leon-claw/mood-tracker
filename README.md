@@ -5,52 +5,75 @@
 <h1 align="center">Mood Tracker</h1>
 
 <p align="center">
-  一个本地优先、可选云端同步的心情与日常状态记录应用。
+  本地优先、可选云端同步的心情与日常状态记录应用。
 </p>
 
 <p align="center">
-  <a href="https://github.com/leon-claw/mood-tracker"><img alt="repo" src="https://img.shields.io/badge/repo-private-111827" /></a>
+  <a href="https://mood-tracker.jianghong.site/"><img alt="site" src="https://img.shields.io/badge/site-online-8FA88B" /></a>
+  <a href="https://github.com/leon-claw/mood-tracker/releases"><img alt="release" src="https://img.shields.io/github/v/release/leon-claw/mood-tracker?label=release" /></a>
   <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white" />
-  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-Express-339933?logo=node.js&logoColor=white" />
   <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-Prisma-4169E1?logo=postgresql&logoColor=white" />
   <img alt="platform" src="https://img.shields.io/badge/platform-Web%20%7C%20Android-111827" />
 </p>
 
 ## 它是什么
 
-**Mood Tracker** 是一个围绕“心情、睡眠质量、日常活动和个人记录”设计的轻量健康日志应用。它默认使用本地数据，不强制登录；当配置后端 API 后，可以开启邮箱密码账号、图形验证码注册、云端同步、修改密码和退出登录。
+**Mood Tracker** 是一个用于记录心情、睡眠、精力、活动、天气、社交和随笔的轻量健康日志。它默认不要求注册，数据先保存在当前设备；当你配置后端 API 后，可以登录账号并开启云端同步。
 
 当前支持：
 
-- 本地优先记录，未登录时数据保存在当前设备
-- 邮箱 + 密码账号，注册时使用简单图形验证码
-- 登录后在本地数据和云端数据之间二选一，避免两处数据混用
-- 日志、趋势、日历、我的四个主页面
-- 月视图日历，点击某日可新建或编辑当天记录
-- 趋势报告图表，基于真实记录展示心情流、心情分布、睡眠质量与心情关系
-- JSON 数据导入导出
-- Capacitor Android 壳，支持构建 debug / release APK
+- Web 应用
+- Android APK
+- 本地模式
+- 邮箱密码登录
+- 注册图形验证码
+- 登录后云端同步
+- 私有化服务器
+- JSON 导入导出
+- 每日打卡提醒
+- Android 版本更新提示
 
-记录字段采用可扩展模板，目前包含：
+核心页面：
+
+- 日志：搜索、筛选、编辑和删除历史记录
+- 趋势：查看心情流、心情分布、睡眠质量与心情关系、年度概览
+- 日历：按月回看记录，点击日期直接编辑
+- 我的：账号、数据导入导出、字段显示、提醒和更新
+
+记录字段分为三类：
 
 - 量表：睡眠质量、心情、精力、饮食健康、工作效率
-- 枚举：今日日常活动、天气、社交、达成成就
+- 枚举：日常活动、天气、社交、达成成就
 - 文本：随笔日志、成就
 
 ## 快速开始
 
-本项目可以只跑前端，本地数据会直接保存在浏览器 `localStorage` 中。
+你可以直接在线使用：
+
+- 官网首页：<https://mood-tracker.jianghong.site/>
+- Web 应用：<https://mood-tracker.jianghong.site/app/>
+- Android 下载：<https://github.com/leon-claw/mood-tracker/releases>
+
+不想注册也可以直接使用本地模式。记录会保存在当前设备中；登录后如果本地已有数据，应用会让你选择保留本地数据或使用云端数据，避免两边混在一起。
+
+## 如何开发
 
 准备环境：
 
 - Node.js 20 或更新版本
 - pnpm
+- Docker Desktop
 
-安装依赖并启动前端：
+安装依赖：
 
 ```bash
 pnpm install
+```
+
+启动前端：
+
+```bash
 npm run dev
 ```
 
@@ -58,24 +81,6 @@ npm run dev
 
 ```text
 http://localhost:3000/
-```
-
-## 后端与云端同步
-
-后端是 Node.js + Express + Prisma + PostgreSQL。它提供账号、验证码、会话、记录同步、JSON 导入导出等 API。
-
-准备环境：
-
-- Docker Desktop
-- PostgreSQL，推荐直接使用 `docker-compose.yml`
-
-创建本地 `.env`：
-
-```bash
-DATABASE_URL="postgresql://mood_tracker:mood_tracker@localhost:5432/mood_tracker"
-JWT_SECRET="change-this-development-secret"
-CLIENT_ORIGIN="http://localhost:3000"
-PORT=4000
 ```
 
 启动数据库并初始化 Prisma：
@@ -92,27 +97,61 @@ npm run prisma:migrate
 npm run server:dev
 ```
 
-前端需要显式配置 API 地址后才会显示云端账号入口：
+后端默认读取这些环境变量：
+
+```bash
+DATABASE_URL="postgresql://mood_tracker:mood_tracker@localhost:5432/mood_tracker"
+JWT_SECRET="development-secret-change-me"
+CLIENT_ORIGIN="http://localhost:3000"
+PORT=4000
+```
+
+让前端连接指定后端：
 
 ```bash
 VITE_API_BASE_URL=http://localhost:4000 npm run dev
 ```
 
-Web 生产构建默认使用线上 API 根路径 `https://mood-tracker.jianghong.site/api/`，因此会显示账号与云端同步入口：
+常用验证命令：
+
+```bash
+npm run lint
+npm run server:test
+npm run build
+```
+
+官网首页位于 `site/`，与主应用分开构建：
+
+```bash
+npm run site:dev
+npm run site:build
+```
+
+## 部署
+
+推荐线上路径：
+
+- `/`：官网首页，来自 `site` 构建产物
+- `/app/`：主应用，来自根目录主应用构建产物
+- `/api/`：后端 API 反向代理
+
+构建主应用：
 
 ```bash
 npm run build
 ```
 
-部署到 `/app/` 子路径时使用：
+部署到 `/app/` 子路径：
 
 ```bash
 npm run build:prod
 ```
 
-## Android APK
+生产构建默认使用线上 API 根路径 `https://mood-tracker.jianghong.site/api/`。如果要部署到自己的服务器，可以通过 `VITE_API_BASE_URL` 覆盖。
 
-Android 端使用 Capacitor 包装同一套 Web 应用。生产构建默认使用线上 API 根路径 `https://mood-tracker.jianghong.site/api/`，会显示账号和云端同步入口；如需指向其他后端，可在构建时提供 `VITE_API_BASE_URL`。
+## Android
+
+Android 端使用 Capacitor 包装同一套 Web 应用。默认构建会带上线上 API 地址，也可以在构建时指定自己的后端。
 
 准备环境：
 
@@ -131,18 +170,6 @@ npm run android:sync
 npm run android:apk:debug
 ```
 
-构建带登录和云端同步入口的 debug APK：
-
-```bash
-npm run android:apk:debug:cloud
-```
-
-默认 API 地址为 `https://mood-tracker.jianghong.site/api/`。如需指向其他后端：
-
-```bash
-VITE_API_BASE_URL=https://api.example.com npm run android:apk:debug:cloud
-```
-
 生成文件位于：
 
 ```text
@@ -152,43 +179,33 @@ android/app/build/outputs/apk/debug/app-debug.apk
 可选 Android 构建变量：
 
 ```bash
-VITE_ANDROID_APP_VERSION=1.0.0
+VITE_ANDROID_APP_VERSION=1.0.3
 VITE_ANDROID_UPDATE_URL=https://example.com/latest.json
 VITE_API_BASE_URL=https://api.example.com
 ```
 
-构建 release APK 前，需要在本机配置并妥善备份 release keystore，然后运行：
+构建 release APK：
 
 ```bash
 npm run android:apk:release
 ```
 
-## 常用命令
-
-```bash
-npm run dev
-npm run build
-npm run lint
-npm run server:dev
-npm run server:test
-npm run android:apk:debug
-```
-
 ## 项目结构
 
 ```text
-src/                  Web 应用源码
-src/components/       页面组件、弹窗、图表组件
-src/fieldSchema.ts    记录字段模板
-server/               Node.js 后端
-server/prisma/        Prisma 数据库模型
+src/                  主应用源码
+src/components/       页面、弹窗、图表和设置组件
+shared/               前后端共享偏好设置模型
+server/               Node.js + Express 后端
+server/prisma/        Prisma schema 和迁移
+site/                 官网首页
 android/              Capacitor Android 项目
 public/               图标、字体和静态资源
 ```
 
 ## 数据格式
 
-JSON 导出格式使用应用级 envelope，便于后续扩展：
+导出的 JSON 使用应用级 envelope，方便后续扩展：
 
 ```json
 {
@@ -199,7 +216,14 @@ JSON 导出格式使用应用级 envelope，便于后续扩展：
     "entries": [],
     "points": 0,
     "unlockedItems": [],
-    "isPremiumUnlocked": false
+    "isPremiumUnlocked": false,
+    "preferences": {
+      "enabledRecordFieldIds": [],
+      "reminders": {
+        "enabled": false,
+        "times": ["21:00"]
+      }
+    }
   }
 }
 ```

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronLeft,
   Clock3,
+  Info,
   LoaderCircle,
   Plus,
   ShieldAlert,
@@ -115,6 +116,11 @@ export const ReminderSettingsPage: React.FC<ReminderSettingsPageProps> = ({
           </button>
         </div>
       </section>
+
+      <div className="flex items-start gap-2 rounded-2xl bg-[#E6F0E6]/45 px-4 py-3 text-[11px] leading-relaxed text-[#6F896C]">
+        <Info size={16} className="mt-0.5 shrink-0" />
+        <span>为更稳定地收到提醒，建议将应用保留在后台运行，避免从最近任务中清理。</span>
+      </div>
 
       {warning && (
         <div className="flex items-start gap-2.5 rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3 text-xs leading-relaxed text-amber-700">
