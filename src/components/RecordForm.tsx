@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, BriefcaseBusiness, Check, Moon, Salad, Smile, Zap } from 'lucide-react';
+import { BookOpen, BriefcaseBusiness, Check, CloudSun, Footprints, Lock, Moon, Salad, Smile, Smartphone, Zap } from 'lucide-react';
 import { FIELD_DEFINITIONS } from '../fieldSchema';
 import { formatAutomaticField } from '../autoDataFormatters';
 import { sanitizeLogValues } from '../logEntry';
-import { LogEntry, LogValues } from '../types';
+import { AutomaticFieldDefinition, LogEntry, LogValues } from '../types';
 import { RecordFieldId } from '../../shared/appPreferences';
 
 interface RecordFormProps {
@@ -23,6 +23,14 @@ const getScaleIcon = (fieldId: string) => {
   if (fieldId === 'workEfficiency') return <BriefcaseBusiness size={14} className="text-slate-500" />;
   return <Smile size={14} className="text-[#8FA88B]" />;
 };
+
+const getAutomaticCardPresentation = (module: AutomaticFieldDefinition['module']) => {
+  if (module === 'steps') return { icon: Footprints, helper: '今日累计' };
+  if (module === 'weather') return { icon: CloudSun, helper: '当前位置天气' };
+  return { icon: Smartphone, helper: '今日累计' };
+};
+
+const automaticCardClass = 'flex min-h-[88px] items-center gap-3 rounded-3xl border border-[#F2EDE9] bg-white p-4 shadow-xs';
 
 export const getInitialValues = (entry?: LogEntry): Partial<LogValues> => entry?.values ? { ...entry.values } : {};
 
@@ -166,13 +174,27 @@ export const RecordForm: React.FC<RecordFormProps> = ({
         if (field.type === 'automatic') {
           const automaticValue = entry?.autoData?.[field.module];
           const formattedValue = formatAutomaticField(field.module, automaticValue);
+          const { icon: AutomaticIcon, helper } = getAutomaticCardPresentation(field.module);
           return (
-            <div key={field.id} className={`${fieldCardClass} border-[#D8E7D6] bg-[#F7FBF6]`}>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{field.label}</span>
-                <span className="rounded-full bg-[#E6F0E6] px-2 py-1 text-[10px] font-semibold text-[#7D9779]">自动采集 · 只读</span>
+            <div
+              key={field.id}
+              data-automatic-module={field.module}
+              className={automaticCardClass}
+            >
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#E6F0E6] text-[#8FA88B]">
+                <AutomaticIcon size={21} strokeWidth={1.8} aria-hidden="true" />
               </div>
-              <div className="font-mono text-lg font-semibold text-[#4A4540]">
+
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[13px] font-semibold text-[#4A4540]">{field.label}</span>
+                  <Lock size={12} strokeWidth={1.8} className="shrink-0 text-gray-400" aria-hidden="true" />
+                  <span className="sr-only">自动采集，只读</span>
+                </div>
+                <div className="mt-1 text-[11px] text-gray-400">{helper}</div>
+              </div>
+
+              <div className="shrink-0 text-right font-mono text-base font-bold text-[#4A4540]">
                 {formattedValue === '--' ? '尚未采集' : formattedValue}
               </div>
             </div>

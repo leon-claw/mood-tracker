@@ -96,6 +96,7 @@ const automaticMarkup = renderToStaticMarkup(
       },
     }}
     onChange={() => undefined}
+    surface="drawer"
     enabledFieldIds={['autoSteps', 'autoWeather', 'autoScreenTime']}
   />
 );
@@ -103,7 +104,28 @@ assert.ok(automaticMarkup.includes('6,432 步'));
 assert.ok(automaticMarkup.includes('晴 · 28°C'));
 assert.ok(automaticMarkup.includes('尚未采集'));
 assert.equal(automaticMarkup.includes('textarea'), false);
-assert.ok(automaticMarkup.includes('自动采集 · 只读'));
+for (const icon of ['lucide-footprints', 'lucide-cloud-sun', 'lucide-smartphone', 'lucide-lock']) {
+  assert.ok(automaticMarkup.includes(icon), `expected automatic card to include ${icon}`);
+}
+
+const getAutomaticCardMarkup = (module: string) => {
+  const marker = `data-automatic-module="${module}"`;
+  const start = automaticMarkup.indexOf(marker);
+  assert.notEqual(start, -1, `expected automatic card for ${module}`);
+  const nextMarker = automaticMarkup.indexOf('data-automatic-module="', start + marker.length);
+  return automaticMarkup.slice(start, nextMarker === -1 ? undefined : nextMarker);
+};
+
+assert.ok(getAutomaticCardMarkup('steps').includes('lucide-footprints'));
+assert.ok(getAutomaticCardMarkup('steps').includes('今日累计'));
+assert.ok(getAutomaticCardMarkup('weather').includes('lucide-cloud-sun'));
+assert.ok(getAutomaticCardMarkup('weather').includes('当前位置天气'));
+assert.ok(getAutomaticCardMarkup('screenTime').includes('lucide-smartphone'));
+assert.ok(getAutomaticCardMarkup('screenTime').includes('今日累计'));
+for (const card of ['steps', 'weather', 'screenTime']) {
+  assert.ok(getAutomaticCardMarkup(card).includes('自动采集，只读'));
+}
+assert.equal(automaticMarkup.includes('自动采集 · 只读'), false);
 
 const historicalValues = getInitialValues({
   id: 'historical-entry',
