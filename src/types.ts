@@ -3,10 +3,41 @@ export type FieldType = 'scale' | 'string' | 'enum';
 export type LogValue = number | string | string[];
 export type LogValues = Record<string, LogValue>;
 
+export type AutoModuleId = 'steps' | 'weather' | 'screenTime';
+
+export interface AutoStepsData {
+  count: number;
+  source: 'health-connect' | 'step-sensor';
+  collectedAt: string;
+  isFinal: boolean;
+}
+
+export interface AutoWeatherData {
+  weatherCode: number;
+  temperatureC?: number;
+  humidityPercent?: number;
+  precipitationMm?: number;
+  provider: 'open-meteo';
+  collectedAt: string;
+}
+
+export interface AutoScreenTimeData {
+  minutes: number;
+  collectedAt: string;
+  isFinal: boolean;
+}
+
+export interface AutoData {
+  steps?: AutoStepsData;
+  weather?: AutoWeatherData;
+  screenTime?: AutoScreenTimeData;
+}
+
 export interface LogEntry {
   id: string;
   date: string;
   values: LogValues;
+  autoData?: AutoData;
 }
 
 export interface EnumOption {

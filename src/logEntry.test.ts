@@ -61,8 +61,17 @@ const entry = createLogEntry('2026-07-05', {
   journal: '清爽的一天',
   achievement: '完成健身计划',
 });
+const automaticEntry = createLogEntry('2026-07-05', {}, {
+  steps: {
+    count: 1234,
+    source: 'step-sensor',
+    collectedAt: '2026-07-05T10:00:00Z',
+    isFinal: false,
+  },
+});
 assert.equal(entry.date, '2026-07-05');
 assert.equal(isLogEntryId(entry.id), true);
+assert.equal(automaticEntry.autoData?.steps?.count, 1234);
 assert.deepEqual(Object.keys(entry.values), [
   'sleepQuality',
   'moodLevel',

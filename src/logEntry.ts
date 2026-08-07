@@ -1,4 +1,5 @@
 import { LogEntry, LogValues } from './types';
+import { sanitizeAutoData } from './autoData';
 import {
   ACHIEVEMENT_MILESTONE_OPTIONS,
   ACTIVITY_OPTIONS,
@@ -74,11 +75,15 @@ export const sanitizeLogValues = (values: Partial<LogValues>): LogValues => ({
   achievement: typeof values.achievement === 'string' ? values.achievement.trim() : '',
 });
 
-export const createLogEntry = (date: string, values: Partial<LogValues>): LogEntry => ({
-  id: createLogEntryId(),
-  date,
-  values: sanitizeLogValues(values),
-});
+export const createLogEntry = (date: string, values: Partial<LogValues>, autoData?: unknown): LogEntry => {
+  const sanitizedAutoData = sanitizeAutoData(autoData);
+  return {
+    id: createLogEntryId(),
+    date,
+    values: sanitizeLogValues(values),
+    ...(sanitizedAutoData ? { autoData: sanitizedAutoData } : {}),
+  };
+};
 
 const legacyDemoFingerprints = [
   '1|2026-06-01|8|7|running',
