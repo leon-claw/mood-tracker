@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BookOpen, BriefcaseBusiness, Check, Moon, Salad, Smile, Zap } from 'lucide-react';
 import { FIELD_DEFINITIONS } from '../fieldSchema';
+import { formatAutomaticField } from '../autoDataFormatters';
 import { sanitizeLogValues } from '../logEntry';
 import { LogEntry, LogValues } from '../types';
 import { RecordFieldId } from '../../shared/appPreferences';
@@ -162,7 +163,21 @@ export const RecordForm: React.FC<RecordFormProps> = ({
           );
         }
 
-        if (field.type === 'automatic') return null;
+        if (field.type === 'automatic') {
+          const automaticValue = entry?.autoData?.[field.module];
+          const formattedValue = formatAutomaticField(field.module, automaticValue);
+          return (
+            <div key={field.id} className={`${fieldCardClass} border-[#D8E7D6] bg-[#F7FBF6]`}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{field.label}</span>
+                <span className="rounded-full bg-[#E6F0E6] px-2 py-1 text-[10px] font-semibold text-[#7D9779]">自动采集 · 只读</span>
+              </div>
+              <div className="font-mono text-lg font-semibold text-[#4A4540]">
+                {formattedValue === '--' ? '尚未采集' : formattedValue}
+              </div>
+            </div>
+          );
+        }
 
         const textValue = typeof values[field.id] === 'string' ? values[field.id] as string : '';
         const maxLength = field.maxLength || 200;

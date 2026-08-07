@@ -73,6 +73,38 @@ assert.ok(journalOnlyMarkup.includes('随笔日志'));
 assert.equal(journalOnlyMarkup.includes('睡眠质量'), false);
 assert.equal(journalOnlyMarkup.includes('心情'), false);
 
+const automaticMarkup = renderToStaticMarkup(
+  <RecordForm
+    date="2026-07-07"
+    entry={{
+      id: 'automatic-entry',
+      date: '2026-07-07',
+      values: {},
+      autoData: {
+        steps: {
+          count: 6432,
+          source: 'health-connect',
+          collectedAt: '2026-07-07T10:00:00Z',
+          isFinal: false,
+        },
+        weather: {
+          weatherCode: 0,
+          temperatureC: 28,
+          provider: 'open-meteo',
+          collectedAt: '2026-07-07T10:00:00Z',
+        },
+      },
+    }}
+    onChange={() => undefined}
+    enabledFieldIds={['autoSteps', 'autoWeather', 'autoScreenTime']}
+  />
+);
+assert.ok(automaticMarkup.includes('6,432 步'));
+assert.ok(automaticMarkup.includes('晴 · 28°C'));
+assert.ok(automaticMarkup.includes('尚未采集'));
+assert.equal(automaticMarkup.includes('textarea'), false);
+assert.ok(automaticMarkup.includes('自动采集 · 只读'));
+
 const historicalValues = getInitialValues({
   id: 'historical-entry',
   date: '2026-07-06',
