@@ -5,8 +5,10 @@ import {
   BookOpen,
   BriefcaseBusiness,
   Check,
+  Clock3,
   ChevronLeft,
   CloudSun,
+  Footprints,
   Moon,
   Salad,
   Smile,
@@ -31,6 +33,7 @@ const fieldGroups: Array<{ type: FieldDefinition['type']; label: string; descrip
   { type: 'scale', label: '量表', description: '使用 1 到 10 分记录状态' },
   { type: 'enum', label: '选择项', description: '从固定选项中选择一个或多个' },
   { type: 'string', label: '文本', description: '自由写下当天的内容' },
+  { type: 'automatic', label: '设备数据', description: '后台自动采集，仅显示，不可手动编辑' },
 ];
 
 const getFieldIcon = (fieldId: RecordFieldId) => {
@@ -46,7 +49,17 @@ const getFieldIcon = (fieldId: RecordFieldId) => {
   if (fieldId === 'achievementMilestones') return <Trophy size={18} className="text-amber-600" />;
   if (fieldId === 'journal') return <BookOpen size={18} className="text-[#D48166]" />;
   if (fieldId === 'achievement') return <Award size={18} className="text-orange-500" />;
+  if (fieldId === 'autoSteps') return <Footprints size={18} className="text-emerald-500" />;
+  if (fieldId === 'autoWeather') return <CloudSun size={18} className="text-sky-500" />;
+  if (fieldId === 'autoScreenTime') return <Clock3 size={18} className="text-violet-500" />;
   return <Sparkles size={18} className={iconClass} />;
+};
+
+const getFieldDescription = (field: FieldDefinition) => {
+  if (field.type === 'scale') return '1-10 分';
+  if (field.type === 'enum') return '可多选';
+  if (field.type === 'string') return `最多 ${field.maxLength || 200} 字`;
+  return '自动采集 · 只读';
 };
 
 export const RecordFieldSettingsPage: React.FC<RecordFieldSettingsPageProps> = ({
@@ -80,7 +93,7 @@ export const RecordFieldSettingsPage: React.FC<RecordFieldSettingsPageProps> = (
     </div>
 
     <div className="rounded-2xl border border-[#D8E7D6] bg-[#E6F0E6]/55 px-4 py-3 text-xs leading-relaxed text-[#6E876B]">
-      这里只控制记录面板的显示内容，不会删除已经保存的历史数据。
+      这里同时控制记录面板的显示和设备数据采集。关闭后会停止未来采集，但不会删除已经保存的历史数据。
     </div>
 
     {fieldGroups.map((group) => {
@@ -109,7 +122,7 @@ export const RecordFieldSettingsPage: React.FC<RecordFieldSettingsPageProps> = (
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-[#4A4540]">{field.label}</div>
                       <div className="mt-0.5 text-[10px] text-gray-400">
-                        {field.type === 'scale' ? '1-10 分' : field.type === 'enum' ? '可多选' : `最多 ${field.maxLength || 200} 字`}
+                        {getFieldDescription(field)}
                       </div>
                     </div>
                   </div>

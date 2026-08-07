@@ -27,11 +27,12 @@ for (const field of FIELD_DEFINITIONS) {
   assert.ok(markup.includes(field.label), `expected settings to include ${field.label}`);
 }
 
-assert.ok(markup.includes('2/11'));
+assert.ok(markup.includes('2/14'));
 assert.ok(markup.includes('记录模块设置'));
 assert.equal((markup.match(/aria-pressed="true"/g) || []).length, 2);
-assert.equal((markup.match(/aria-pressed="false"/g) || []).length, 9);
+assert.equal((markup.match(/aria-pressed="false"/g) || []).length, 12);
 assert.ok(markup.includes('不会删除已经保存的历史数据'));
+assert.ok(markup.includes('自动采集'));
 assert.match(appSource, /至少保留一个记录模块/);
 assert.match(appSource, /\{!isSecondarySettingsOpen && \(\s*<div id="bottom-nav-bar"/);
 

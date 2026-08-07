@@ -19,6 +19,9 @@ assert.deepEqual(
     'achievementMilestones',
     'journal',
     'achievement',
+    'autoSteps',
+    'autoWeather',
+    'autoScreenTime',
   ]
 );
 
@@ -88,6 +91,21 @@ assert.equal(journal?.label, '随笔日志');
 const achievement = getFieldDefinition('achievement');
 assert.equal(achievement?.type, 'string');
 assert.equal(achievement?.label, '成就');
+
+const automaticFields = [
+  ['autoSteps', 'steps', 'number'],
+  ['autoWeather', 'weather', 'weather'],
+  ['autoScreenTime', 'screenTime', 'duration'],
+] as const;
+for (const [fieldId, module, valueType] of automaticFields) {
+  const field = getFieldDefinition(fieldId);
+  assert.equal(field?.type, 'automatic');
+  if (field?.type === 'automatic') {
+    assert.equal(field.module, module);
+    assert.equal(field.valueType, valueType);
+    assert.equal(field.readOnly, true);
+  }
+}
 
 for (const fieldId of ['energyLevel', 'dietHealth', 'workEfficiency']) {
   const field = getFieldDefinition(fieldId);

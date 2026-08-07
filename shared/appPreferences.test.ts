@@ -5,6 +5,17 @@ import {
   MAX_REMINDER_TIMES,
   normalizeAppPreferences,
 } from './appPreferences';
+import { FIELD_DEFINITIONS } from '../src/fieldSchema';
+
+const defaults = createDefaultAppPreferences();
+assert.equal(defaults.enabledRecordFieldIds.includes('autoSteps'), false);
+assert.equal(defaults.enabledRecordFieldIds.includes('autoWeather'), false);
+assert.equal(defaults.enabledRecordFieldIds.includes('autoScreenTime'), false);
+assert.deepEqual(
+  FIELD_DEFINITIONS.map((field) => field.id),
+  [...new Set([...defaults.enabledRecordFieldIds, 'autoSteps', 'autoWeather', 'autoScreenTime'])]
+);
+assert.equal(normalizeAppPreferences({ enabledRecordFieldIds: ['autoWeather'] }).enabledRecordFieldIds.includes('autoWeather'), true);
 
 assert.deepEqual(
   normalizeAppPreferences({ enabledRecordFieldIds: ['journal'] }),

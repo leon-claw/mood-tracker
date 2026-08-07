@@ -1,4 +1,4 @@
-export type FieldType = 'scale' | 'string' | 'enum';
+export type FieldType = 'scale' | 'string' | 'enum' | 'automatic';
 
 export type LogValue = number | string | string[];
 export type LogValues = Record<string, LogValue>;
@@ -70,7 +70,15 @@ export interface EnumFieldDefinition extends BaseFieldDefinition {
   options: EnumOption[];
 }
 
+export interface AutomaticFieldDefinition extends BaseFieldDefinition {
+  type: 'automatic';
+  module: 'steps' | 'weather' | 'screenTime';
+  valueType: 'number' | 'weather' | 'duration';
+  readOnly: true;
+}
+
 export type FieldDefinition =
   | ScaleFieldDefinition
   | StringFieldDefinition
-  | EnumFieldDefinition;
+  | EnumFieldDefinition
+  | AutomaticFieldDefinition;

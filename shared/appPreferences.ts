@@ -10,7 +10,14 @@ export const RECORD_FIELD_IDS = [
   'achievementMilestones',
   'journal',
   'achievement',
+  'autoSteps',
+  'autoWeather',
+  'autoScreenTime',
 ] as const;
+
+export const DEFAULT_ENABLED_RECORD_FIELD_IDS = RECORD_FIELD_IDS.filter(
+  (fieldId) => !fieldId.startsWith('auto')
+);
 
 export type RecordFieldId = typeof RECORD_FIELD_IDS[number];
 
@@ -28,7 +35,7 @@ export interface AppPreferences {
 }
 
 export const createDefaultAppPreferences = (): AppPreferences => ({
-  enabledRecordFieldIds: [...RECORD_FIELD_IDS],
+  enabledRecordFieldIds: [...DEFAULT_ENABLED_RECORD_FIELD_IDS],
   reminders: {
     enabled: false,
     times: [DEFAULT_REMINDER_TIME],
@@ -67,12 +74,12 @@ export const normalizeAppPreferences = (value: unknown): AppPreferences => {
   const requestedIds = new Set(
     Array.isArray(value.enabledRecordFieldIds)
       ? value.enabledRecordFieldIds.filter((fieldId): fieldId is string => typeof fieldId === 'string')
-      : RECORD_FIELD_IDS
+      : DEFAULT_ENABLED_RECORD_FIELD_IDS
   );
   const requestedFieldIds = RECORD_FIELD_IDS.filter((fieldId) => requestedIds.has(fieldId));
   const enabledRecordFieldIds = requestedFieldIds.length > 0
     ? requestedFieldIds
-    : [...RECORD_FIELD_IDS];
+    : [...DEFAULT_ENABLED_RECORD_FIELD_IDS];
 
   return {
     enabledRecordFieldIds,
@@ -81,8 +88,8 @@ export const normalizeAppPreferences = (value: unknown): AppPreferences => {
 };
 
 export const hasDefaultAppPreferences = (preferences: AppPreferences) =>
-  preferences.enabledRecordFieldIds.length === RECORD_FIELD_IDS.length
-  && RECORD_FIELD_IDS.every((fieldId, index) => preferences.enabledRecordFieldIds[index] === fieldId)
+  preferences.enabledRecordFieldIds.length === DEFAULT_ENABLED_RECORD_FIELD_IDS.length
+  && DEFAULT_ENABLED_RECORD_FIELD_IDS.every((fieldId, index) => preferences.enabledRecordFieldIds[index] === fieldId)
   && preferences.reminders.enabled === false
   && preferences.reminders.times.length === 1
   && preferences.reminders.times[0] === DEFAULT_REMINDER_TIME;

@@ -162,6 +162,8 @@ export const RecordForm: React.FC<RecordFormProps> = ({
           );
         }
 
+        if (field.type === 'automatic') return null;
+
         const textValue = typeof values[field.id] === 'string' ? values[field.id] as string : '';
         const maxLength = field.maxLength || 200;
 

@@ -42,6 +42,9 @@ export const FIELD_DEFINITIONS: FieldDefinition[] = [
   { id: 'achievementMilestones', label: '达成成就', type: 'enum', required: false, multiple: true, options: ACHIEVEMENT_MILESTONE_OPTIONS },
   { id: 'journal', label: '随笔日志', type: 'string', required: false, maxLength: 200 },
   { id: 'achievement', label: '成就', type: 'string', required: false, maxLength: 120 },
+  { id: 'autoSteps', label: '全天步数', type: 'automatic', module: 'steps', valueType: 'number', readOnly: true, required: false },
+  { id: 'autoWeather', label: '今日天气', type: 'automatic', module: 'weather', valueType: 'weather', readOnly: true, required: false },
+  { id: 'autoScreenTime', label: '全天使用时间', type: 'automatic', module: 'screenTime', valueType: 'duration', readOnly: true, required: false },
 ];
 
 export const getFieldDefinition = (id: string) =>
