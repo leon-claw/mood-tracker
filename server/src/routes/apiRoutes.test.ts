@@ -237,6 +237,14 @@ await loggedInAgent
       operation: 'upsert',
       date: '2026-06-20',
       values: { moodLevel: 7, sleepQuality: 6, journal: '六月记录' },
+      autoData: {
+        steps: {
+          count: 1234,
+          source: 'step-sensor',
+          collectedAt: '2026-06-20T10:00:00Z',
+          isFinal: false,
+        },
+      },
     }],
     userState: {
       points: 550,
@@ -248,6 +256,7 @@ await loggedInAgent
   .expect((response) => {
     assert.equal(response.body.entries.length, 1);
     assert.equal(response.body.entries[0].date, '2026-06-20');
+    assert.equal(response.body.entries[0].autoData.steps.count, 1234);
     assert.equal(response.body.bootstrap.points, 550);
   });
 

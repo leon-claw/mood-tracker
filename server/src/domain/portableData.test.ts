@@ -46,6 +46,14 @@ const normalized = normalizeSyncData({
       id: 'existing-entry',
       date: '2026-07-08',
       values: dirtyValues,
+      autoData: {
+        steps: {
+          count: 1000,
+          source: 'health-connect',
+          collectedAt: '2026-07-08T10:00:00Z',
+          isFinal: false,
+        },
+      },
     },
     {
       id: 7,
@@ -65,6 +73,14 @@ assert.deepEqual(normalized, {
       id: 'existing-entry',
       date: '2026-07-08',
       values: dirtyValues,
+      autoData: {
+        steps: {
+          count: 1000,
+          source: 'health-connect',
+          collectedAt: '2026-07-08T10:00:00Z',
+          isFinal: false,
+        },
+      },
     },
   ],
   points: 42,

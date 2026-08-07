@@ -1,5 +1,13 @@
+import { mergeAutoData, sanitizeAutoData } from '../../../src/autoData';
+import type { AutoData } from '../../../src/types';
+
 export type ServerLogValue = number | string | string[];
 export type ServerLogValues = Record<string, ServerLogValue>;
+export type ServerAutoData = AutoData;
+
+export const sanitizeServerAutoData = sanitizeAutoData;
+export const mergeServerAutoData = (base: unknown, incoming?: Partial<AutoData>) =>
+  mergeAutoData(sanitizeAutoData(base), incoming);
 
 const ACTIVITY_IDS = ['running', 'hiking', 'swimming', 'fitness', 'other'];
 const WEATHER_IDS = ['sunny', 'cloudy', 'rainy', 'snowy', 'hot', 'storm', 'windy'];

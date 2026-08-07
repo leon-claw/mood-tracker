@@ -1,4 +1,4 @@
-import { AppExportData } from './dataPortability';
+import { AppExportData, normalizeEntries } from './dataPortability';
 import { ENTRY_STORAGE_KEY, isLegacyDemoEntries } from './logEntry';
 import {
   hasDefaultAppPreferences,
@@ -32,7 +32,7 @@ const readEntries = () => {
       localStorage.removeItem(ENTRY_STORAGE_KEY);
       return [];
     }
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? normalizeEntries(parsed) : [];
   } catch {
     return [];
   }
@@ -58,7 +58,7 @@ export const readLocalAppData = (): AppExportData => ({
 });
 
 export const writeLocalAppData = (data: AppExportData) => {
-  localStorage.setItem(ENTRY_STORAGE_KEY, JSON.stringify(data.entries));
+  localStorage.setItem(ENTRY_STORAGE_KEY, JSON.stringify(normalizeEntries(data.entries)));
   localStorage.setItem(POINTS_STORAGE_KEY, String(Math.max(0, Math.round(data.points || 0))));
   localStorage.setItem(UNLOCKED_STORAGE_KEY, JSON.stringify(data.unlockedItems || []));
   localStorage.setItem(PREMIUM_STORAGE_KEY, data.isPremiumUnlocked ? 'true' : 'false');

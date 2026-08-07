@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeSyncData, ServerLogEntry, SyncData } from '../domain/portableData';
-import { sanitizeServerLogValues, ServerLogValues } from '../domain/logValues';
+import { mergeServerAutoData, sanitizeServerLogValues, ServerLogValues } from '../domain/logValues';
+import type { AutoData } from '../../../src/types';
 import {
   AppRepository,
   BootstrapData,
@@ -134,13 +135,16 @@ export class MemoryRepository implements AppRepository {
     return this.cloneData(normalized);
   }
 
-  async upsertEntry(userId: string, date: string, values: ServerLogValues) {
+  async upsertEntry(userId: string, date: string, values: ServerLogValues, autoData?: Partial<AutoData>) {
     const current = this.cloneData(this.userData.get(userId) || createEmptyData());
     const existing = current.entries.find((entry) => entry.date === date);
     const entry: ServerLogEntry = {
       id: existing?.id || randomUUID(),
       date,
       values: sanitizeServerLogValues(values),
+      ...(mergeServerAutoData(existing?.autoData, autoData)
+        ? { autoData: mergeServerAutoData(existing?.autoData, autoData) }
+        : {}),
     };
     current.entries = existing
       ? current.entries.map((item) => (item.id === existing.id ? entry : item))
@@ -195,6 +199,7 @@ export class MemoryRepository implements AppRepository {
   }
 
   private cloneEntry(entry: ServerLogEntry): ServerLogEntry {
+    const autoData = mergeServerAutoData(undefined, entry.autoData);
     return {
       id: entry.id,
       date: entry.date,
@@ -207,6 +212,7 @@ export class MemoryRepository implements AppRepository {
           ? [...entry.values.achievementMilestones]
           : [],
       },
+      ...(autoData ? { autoData } : {}),
     };
   }
 }

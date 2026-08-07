@@ -4,7 +4,7 @@ import { createCaptchaChallenge, generateCaptchaText, verifyCaptchaAnswer } from
 import { comparePassword, hashPassword } from '../lib/password';
 import { clearSessionCookie, createRequireAuth, setSessionCookie, signSessionToken, AuthenticatedRequest } from '../lib/session';
 import { createExportEnvelope, normalizeSyncData, parseImportEnvelope } from '../domain/portableData';
-import { sanitizeServerLogValues } from '../domain/logValues';
+import { sanitizeServerAutoData, sanitizeServerLogValues } from '../domain/logValues';
 import { AppRepository, UserRecord } from '../repositories/types';
 import {
   MAX_REMINDER_TIMES,
@@ -45,12 +45,13 @@ const passwordChangeSchema = z.object({
 const entrySchema = z.object({
   date: dateSchema,
   values: valuesSchema,
+  autoData: z.unknown().optional(),
 });
 
 const monthSchema = z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/);
 const yearSchema = z.coerce.number().int().min(2000).max(2100);
 const entryChangeSchema = z.discriminatedUnion('operation', [
-  z.object({ operation: z.literal('upsert'), date: dateSchema, values: valuesSchema }),
+  z.object({ operation: z.literal('upsert'), date: dateSchema, values: valuesSchema, autoData: z.unknown().optional() }),
   z.object({ operation: z.literal('delete'), date: dateSchema }),
 ]);
 
@@ -247,7 +248,12 @@ export const createApiRouter = ({
   router.post('/entries', requireAuth, asyncHandler(async (request, response) => {
     const user = await requireCurrentUser(request as AuthenticatedRequest, repository);
     const body = parseBody(entrySchema, request.body);
-    const entry = await repository.upsertEntry(user.id, body.date, sanitizeServerLogValues(body.values));
+    const entry = await repository.upsertEntry(
+      user.id,
+      body.date,
+      sanitizeServerLogValues(body.values),
+      sanitizeServerAutoData(body.autoData)
+    );
     response.json({ entry });
   }));
 
@@ -271,7 +277,8 @@ export const createApiRouter = ({
         changedEntries.push(await repository.upsertEntry(
           user.id,
           change.date,
-          sanitizeServerLogValues(change.values)
+          sanitizeServerLogValues(change.values),
+          sanitizeServerAutoData(change.autoData)
         ));
       }
     }

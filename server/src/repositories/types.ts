@@ -1,6 +1,7 @@
 import { ServerLogEntry, SyncData } from '../domain/portableData';
 import { ServerLogValues } from '../domain/logValues';
 import { AppPreferences } from '../../../shared/appPreferences';
+import type { AutoData } from '../../../src/types';
 
 export interface UserRecord {
   id: string;
@@ -60,7 +61,7 @@ export interface AppRepository {
   getYearlyReport(userId: string, year: number): Promise<YearlyReportData>;
   getSyncData(userId: string): Promise<SyncData>;
   replaceSyncData(userId: string, data: SyncData): Promise<SyncData>;
-  upsertEntry(userId: string, date: string, values: ServerLogValues): Promise<ServerLogEntry>;
+  upsertEntry(userId: string, date: string, values: ServerLogValues, autoData?: Partial<AutoData>): Promise<ServerLogEntry>;
   deleteEntry(userId: string, entryId: string): Promise<void>;
   deleteEntryByDate(userId: string, date: string): Promise<void>;
   updateUserState(userId: string, state: UserStateRecord): Promise<UserStateRecord>;

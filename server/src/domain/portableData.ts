@@ -1,10 +1,11 @@
-import { sanitizeServerLogValues, ServerLogValues } from './logValues';
+import { sanitizeServerAutoData, sanitizeServerLogValues, ServerLogValues } from './logValues';
 import { AppPreferences, normalizeAppPreferences } from '../../../shared/appPreferences';
 
 export interface ServerLogEntry {
   id: string;
   date: string;
   values: ServerLogValues;
+  autoData?: import('../../../src/types').AutoData;
 }
 
 export interface SyncData {
@@ -54,10 +55,12 @@ export const normalizeSyncData = (value: unknown): SyncData => {
       return result;
     }
 
+    const autoData = sanitizeServerAutoData(item.autoData);
     result.push({
       id: typeof item.id === 'string' ? item.id : `imported-${item.date}-${index}`,
       date: item.date,
       values: sanitizeServerLogValues(item.values),
+      ...(autoData ? { autoData } : {}),
     });
     return result;
   }, []);

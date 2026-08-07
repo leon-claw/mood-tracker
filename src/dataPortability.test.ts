@@ -23,6 +23,14 @@ const entries: LogEntry[] = [
       journal: '今天状态不错',
       achievement: '完成一次导出测试',
     },
+    autoData: {
+      steps: {
+        count: 1000,
+        source: 'health-connect',
+        collectedAt: '2026-07-07T10:00:00Z',
+        isFinal: false,
+      },
+    },
   },
 ];
 const preferences: AppPreferences = {

@@ -72,6 +72,14 @@ const data: AppExportData = {
         journal: '本地记录',
         achievement: '写完 store 测试',
       },
+      autoData: {
+        weather: {
+          weatherCode: 0,
+          temperatureC: 28,
+          provider: 'open-meteo',
+          collectedAt: '2026-07-08T10:00:00Z',
+        },
+      },
     },
   ],
   points: 80,
@@ -185,6 +193,7 @@ assert.deepEqual(
 assert.equal(calls[1].init?.headers && (calls[1].init.headers as Record<string, string>)['Content-Type'], 'application/json');
 assert.equal(JSON.parse(String(calls[1].init?.body)).email, 'A@EXAMPLE.COM');
 assert.equal(JSON.parse(String(calls[2].init?.body)).entries[0].id, entryId);
+assert.equal(JSON.parse(String(calls[3].init?.body)).autoData.weather.temperatureC, 28);
 assert.deepEqual(JSON.parse(String(calls[4].init?.body)), data.preferences);
 
 calls.length = 0;
@@ -199,7 +208,7 @@ assert.deepEqual(await monthlyCloud.getEntriesByMonth(2026, 7), data.entries);
 assert.deepEqual(await monthlyCloud.getEntryMonths(), [{ year: 2026, month: 7, count: 1 }]);
 assert.equal((await monthlyCloud.getYearlyReport(2026)).months[6].averageMood, 9);
 assert.deepEqual(await monthlyCloud.applyChanges({
-  entries: [{ operation: 'upsert', date: data.entries[0].date, values: data.entries[0].values }],
+  entries: [{ operation: 'upsert', date: data.entries[0].date, values: data.entries[0].values, autoData: data.entries[0].autoData }],
 }), {
   entries: data.entries,
   deletedDates: [],

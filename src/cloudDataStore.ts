@@ -1,5 +1,5 @@
 import { AppExportData, normalizeAppData, normalizeEntries } from './dataPortability';
-import { LogEntry, LogValues } from './types';
+import { AutoData, LogEntry, LogValues } from './types';
 import { AppPreferences, normalizeAppPreferences } from '../shared/appPreferences';
 
 export interface AuthUser {
@@ -44,7 +44,7 @@ export interface YearlyReportData {
 }
 
 export type CloudEntryChange =
-  | { operation: 'upsert'; date: string; values: LogValues }
+  | { operation: 'upsert'; date: string; values: LogValues; autoData?: Partial<AutoData> }
   | { operation: 'delete'; date: string };
 
 export interface CloudChangesPayload {
@@ -345,6 +345,7 @@ export const createCloudDataStore = (
         const response = await jsonRequest<{ entry: LogEntry }>('/api/entries', 'POST', {
           date: entry.date,
           values: entry.values,
+          ...(entry.autoData ? { autoData: entry.autoData } : {}),
         });
         return response.entry;
       });

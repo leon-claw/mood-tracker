@@ -1,4 +1,5 @@
 import { normalizeLogEntryId, sanitizeLogValues } from './logEntry';
+import { sanitizeAutoData } from './autoData';
 import { LogEntry, LogValues } from './types';
 import { AppPreferences, normalizeAppPreferences } from '../shared/appPreferences';
 
@@ -42,10 +43,12 @@ export const normalizeEntries = (value: unknown): LogEntry[] => {
       return result;
     }
 
+    const autoData = sanitizeAutoData(item.autoData);
     result.push({
       id: normalizeLogEntryId(item.id),
       date: item.date,
       values: sanitizeLogValues(item.values as Partial<LogValues>),
+      ...(autoData ? { autoData } : {}),
     });
     return result;
   }, []);

@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { normalizeSyncData, ServerLogEntry, SyncData } from '../domain/portableData';
-import { sanitizeServerLogValues, ServerLogValues } from '../domain/logValues';
+import { mergeServerAutoData, sanitizeServerLogValues, ServerLogValues } from '../domain/logValues';
+import type { AutoData } from '../../../src/types';
 import { normalizeDatabaseEntryId } from '../domain/entryId';
 import {
   AppRepository,
@@ -179,6 +180,7 @@ export class PrismaRepository implements AppRepository {
             userId,
             date: dateStringToDate(entry.date),
             values: entry.values as Prisma.InputJsonValue,
+            ...(entry.autoData ? { autoData: entry.autoData as Prisma.InputJsonValue } : {}),
           })),
         });
       }
@@ -203,8 +205,17 @@ export class PrismaRepository implements AppRepository {
     return this.getSyncData(userId);
   }
 
-  async upsertEntry(userId: string, date: string, values: ServerLogValues) {
+  async upsertEntry(userId: string, date: string, values: ServerLogValues, autoData?: Partial<AutoData>) {
     const sanitized = sanitizeServerLogValues(values);
+    const existing = await this.prisma.logEntry.findUnique({
+      where: {
+        userId_date: {
+          userId,
+          date: dateStringToDate(date),
+        },
+      },
+    });
+    const mergedAutoData = mergeServerAutoData(existing?.autoData, autoData);
     const entry = await this.prisma.logEntry.upsert({
       where: {
         userId_date: {
@@ -214,11 +225,13 @@ export class PrismaRepository implements AppRepository {
       },
       update: {
         values: sanitized as Prisma.InputJsonValue,
+        ...(mergedAutoData ? { autoData: mergedAutoData as Prisma.InputJsonValue } : {}),
       },
       create: {
         userId,
         date: dateStringToDate(date),
         values: sanitized as Prisma.InputJsonValue,
+        ...(mergedAutoData ? { autoData: mergedAutoData as Prisma.InputJsonValue } : {}),
       },
     });
     return this.toServerEntry(entry);
@@ -274,7 +287,7 @@ export class PrismaRepository implements AppRepository {
     return normalizeAppPreferences(updated.preferences);
   }
 
-  private toServerEntry(entry: { id: string; date: Date; values: Prisma.JsonValue }): ServerLogEntry {
+  private toServerEntry(entry: { id: string; date: Date; values: Prisma.JsonValue; autoData: Prisma.JsonValue | null }): ServerLogEntry {
     const data = emptyData();
     const normalized = normalizeSyncData({
       ...data,
@@ -282,6 +295,7 @@ export class PrismaRepository implements AppRepository {
         id: entry.id,
         date: dateToDateString(entry.date),
         values: entry.values,
+        autoData: entry.autoData,
       }],
     });
     return normalized.entries[0];
