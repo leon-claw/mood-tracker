@@ -60,6 +60,8 @@ import { formatLocalDate, getCurrentDateContext, YearMonth } from './dateContext
 import { getAvailableReportMonths, getYearlyReportData } from './reportData';
 import { fetchUpdateManifest, isVersionNewer, UpdateManifest } from './updateCheck';
 import { exportJsonFile } from './androidExport';
+import { autoDataBridge, getEnabledAutoModules } from './autoDataBridge';
+import { hasManualLogValues, mergePendingAutoDataIntoEntries } from './autoDataService';
 import {
   AppPreferences,
   normalizeAppPreferences,
@@ -255,6 +257,7 @@ export default function App() {
   const dataModeRef = useRef<DataMode>(dataMode);
   const appDataRef = useRef<AppExportData>(initialLocalData);
   const preferencesRef = useRef(preferences);
+  const autoDataSyncRef = useRef<() => Promise<void>>(async () => undefined);
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   // Save states to LocalStorage only while the app is in guest/local mode.
@@ -363,6 +366,12 @@ export default function App() {
             message: error instanceof Error ? error.message : '打卡提醒更新失败，请稍后再试。',
           });
         });
+        void autoDataSyncRef.current().catch((error) => {
+          setToast({
+            type: 'error',
+            message: error instanceof Error ? error.message : '设备数据同步失败，请稍后再试。',
+          });
+        });
         if (isReminderSettingsHash(window.location.hash)) {
           void getReminderPermissionState()
             .then(setReminderPermissionState)
@@ -425,6 +434,24 @@ export default function App() {
       isCancelled = true;
     };
   }, [isNativeMobile, preferences.reminders]);
+
+  useEffect(() => {
+    if (!isNativeMobile) return;
+
+    let isCancelled = false;
+    void autoDataSyncRef.current().catch((error) => {
+      if (!isCancelled) {
+        setToast({
+          type: 'error',
+          message: error instanceof Error ? error.message : '设备数据同步失败，请稍后再试。',
+        });
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isNativeMobile, preferences.enabledRecordFieldIds.join('|')]);
 
   useEffect(() => {
     if (!isNativeMobile || !isReminderSettingsOpen) return;
@@ -619,6 +646,54 @@ export default function App() {
     scheduleCloudSync();
   };
 
+  const syncAutoData = async () => {
+    if (!isNativeMobile) return;
+
+    const enabledFieldIds = preferencesRef.current.enabledRecordFieldIds;
+    await autoDataBridge.configure(enabledFieldIds);
+    const pending = await autoDataBridge.drainPending();
+    if (pending.entries.length === 0) return;
+
+    const currentData = appDataRef.current;
+    const nextEntries = mergePendingAutoDataIntoEntries(
+      currentData.entries,
+      pending.entries,
+      enabledFieldIds,
+    );
+    const currentByDate = new Map(currentData.entries.map((entry) => [entry.date, entry]));
+    const changedEntries = [...new Set(pending.entries.map((item) => item.date))]
+      .map((date) => nextEntries.find((entry) => entry.date === date))
+      .filter((entry): entry is LogEntry => Boolean(entry && entry.autoData));
+    if (changedEntries.length === 0) return;
+
+    appDataRef.current = { ...currentData, entries: nextEntries };
+    setEntries(nextEntries);
+
+    if (dataModeRef.current === 'cloud') {
+      setCloudEntryMonths((current) => {
+        const next = [...current];
+        changedEntries.forEach((entry) => {
+          if (currentByDate.has(entry.date)) return;
+          const year = Number(entry.date.slice(0, 4));
+          const month = Number(entry.date.slice(5, 7));
+          const index = next.findIndex((item) => item.year === year && item.month === month);
+          if (index >= 0) next[index] = { ...next[index], count: next[index].count + 1 };
+          else next.push({ year, month, count: 1 });
+        });
+        return next.sort((left, right) => (right.year * 12 + right.month) - (left.year * 12 + left.month));
+      });
+      queueCloudChanges({
+        entries: changedEntries.map((entry) => ({
+          operation: 'upsert' as const,
+          date: entry.date,
+          values: entry.values,
+          autoData: entry.autoData,
+        })),
+      });
+    }
+  };
+  autoDataSyncRef.current = syncAutoData;
+
   const loadCloudMonth = useCallback(async (year: number, month: number, force = false) => {
     if (dataModeRef.current !== 'cloud') return;
     const key = formatMonthKey(year, month);
@@ -809,7 +884,8 @@ export default function App() {
     if (existingIndex === -1) nextEntries.push(optimisticEntry);
     else nextEntries[existingIndex] = optimisticEntry;
 
-    const nextPoints = existingEntry ? currentData.points : currentData.points + 50;
+    const shouldRewardManualEntry = !existingEntry || !hasManualLogValues(existingEntry.values);
+    const nextPoints = shouldRewardManualEntry ? currentData.points + 50 : currentData.points;
     appDataRef.current = {
       ...currentData,
       entries: nextEntries,
@@ -817,7 +893,7 @@ export default function App() {
     };
     setEntries(nextEntries);
     invalidateYearlyReportForDate(optimisticEntry.date);
-    if (!existingEntry) setPoints(nextPoints);
+    if (shouldRewardManualEntry) setPoints(nextPoints);
     if (!existingEntry) {
       setCloudEntryMonths((current) => {
         const year = Number(newEntryData.date.slice(0, 4));
@@ -830,8 +906,13 @@ export default function App() {
       });
     }
     queueCloudChanges({
-      entries: [{ operation: 'upsert', date: optimisticEntry.date, values: optimisticEntry.values }],
-      ...(!existingEntry ? {
+      entries: [{
+        operation: 'upsert',
+        date: optimisticEntry.date,
+        values: optimisticEntry.values,
+        ...(optimisticEntry.autoData ? { autoData: optimisticEntry.autoData } : {}),
+      }],
+      ...(shouldRewardManualEntry ? {
         userState: {
           points: nextPoints,
           unlockedItems: currentData.unlockedItems,
@@ -931,6 +1012,25 @@ export default function App() {
     };
     setPreferences(nextPreferences);
     queueCloudChanges({ preferences: nextPreferences });
+
+    if (!isEnabled && isNativeMobile && getEnabledAutoModules([fieldId]).length > 0) {
+      const autoFieldId = fieldId as 'autoSteps' | 'autoWeather' | 'autoScreenTime';
+      void autoDataBridge.configure(nextPreferences.enabledRecordFieldIds)
+        .then(() => autoDataBridge.requestModulePermission(autoFieldId))
+        .then((permissionState) => {
+          const module = fieldId === 'autoSteps'
+            ? permissionState.steps
+            : fieldId === 'autoWeather'
+              ? permissionState.weather
+              : permissionState.screenTime;
+          if (module === 'permission-required') {
+            setDataStatus('error', '请在系统设置中允许该设备数据权限，后台采集才能正常运行。');
+          }
+        })
+        .catch(() => {
+          setDataStatus('error', '无法申请设备数据权限，请稍后重试。');
+        });
+    }
   };
 
   const commitPreferences = (nextPreferences: AppPreferences) => {

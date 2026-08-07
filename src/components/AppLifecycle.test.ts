@@ -8,6 +8,12 @@ assert.match(appSource, /window\.addEventListener\('pageshow', refreshDateContex
 assert.match(appSource, /CapacitorApp\.addListener\('appStateChange'/);
 assert.match(appSource, /if \(!isActive\) return/);
 assert.match(appSource, /syncCheckInReminderSchedule\(preferencesRef\.current\.reminders\)/);
+assert.match(appSource, /autoDataSyncRef\.current\(\)/);
+assert.match(appSource, /autoDataBridge\.configure\(enabledFieldIds\)/);
+assert.match(appSource, /autoDataBridge\.configure\(nextPreferences\.enabledRecordFieldIds\)/);
+assert.match(appSource, /autoDataBridge\.drainPending\(\)/);
+assert.match(appSource, /mergePendingAutoDataIntoEntries\(/);
+assert.match(appSource, /autoDataBridge\.requestModulePermission\(/);
 assert.match(appSource, /setCurrentDate\(next\.date\)/);
 assert.match(appSource, /setSelectedYear\(next\.year\)/);
 assert.match(appSource, /setSelectedMonth\(next\.month\)/);

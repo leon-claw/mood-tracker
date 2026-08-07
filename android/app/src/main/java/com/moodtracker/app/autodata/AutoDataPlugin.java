@@ -29,10 +29,8 @@ import java.util.Set;
     name = "AutoData",
     permissions = {
         @Permission(alias = "steps", strings = { Manifest.permission.ACTIVITY_RECOGNITION }),
-        @Permission(alias = "weather", strings = {
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION
-        })
+        @Permission(alias = "weatherForeground", strings = { Manifest.permission.ACCESS_COARSE_LOCATION }),
+        @Permission(alias = "weatherBackground", strings = { Manifest.permission.ACCESS_BACKGROUND_LOCATION })
     }
 )
 public class AutoDataPlugin extends Plugin {
@@ -45,6 +43,7 @@ public class AutoDataPlugin extends Plugin {
         super.load();
         enabledModules.clear();
         enabledModules.addAll(readEnabledModules());
+        AutoDataWorker.schedule(getContext(), enabledModules);
     }
 
     @PluginMethod
@@ -69,6 +68,7 @@ public class AutoDataPlugin extends Plugin {
             .edit()
             .putStringSet(ENABLED_MODULES_KEY, new HashSet<>(enabledModules))
             .apply();
+        AutoDataWorker.schedule(getContext(), enabledModules);
 
         JSObject result = new JSObject();
         result.put("enabledModules", toJsonArray(enabledModules));
@@ -97,7 +97,7 @@ public class AutoDataPlugin extends Plugin {
             return;
         }
         if ("autoWeather".equals(module)) {
-            requestPermissionForAlias("weather", call, "permissionCallback");
+            requestPermissionForAlias("weatherForeground", call, "weatherForegroundPermissionCallback");
             return;
         }
 
@@ -108,7 +108,7 @@ public class AutoDataPlugin extends Plugin {
     @PluginMethod
     public void drainPending(PluginCall call) {
         JSObject result = new JSObject();
-        result.put("entries", new JSArray());
+        result.put("entries", new AutoDataQueue(getContext()).drain());
         call.resolve(result);
     }
 
@@ -116,12 +116,28 @@ public class AutoDataPlugin extends Plugin {
     public void getSchedulerState(PluginCall call) {
         JSObject result = new JSObject();
         result.put("enabledModules", toJsonArray(enabledModules));
-        result.put("scheduled", false);
+        result.put("scheduled", !enabledModules.isEmpty());
         call.resolve(result);
     }
 
     @PermissionCallback
     private void permissionCallback(PluginCall call) {
+        call.resolve(AutoDataPermissionState.read(getContext()));
+    }
+
+    @PermissionCallback
+    private void weatherForegroundPermissionCallback(PluginCall call) {
+        if (getContext().checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            call.resolve(AutoDataPermissionState.read(getContext()));
+            return;
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+            && getContext().checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissionForAlias("weatherBackground", call, "permissionCallback");
+            return;
+        }
         call.resolve(AutoDataPermissionState.read(getContext()));
     }
 
@@ -131,14 +147,18 @@ public class AutoDataPlugin extends Plugin {
     }
 
     private List<String> readEnabledModules() {
-        Set<String> saved = getContext()
+        return new ArrayList<>(readEnabledModuleSet(getContext()));
+    }
+
+    public static Set<String> readEnabledModuleSet(Context context) {
+        Set<String> saved = context
             .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
             .getStringSet(ENABLED_MODULES_KEY, new HashSet<>());
         List<String> modules = new ArrayList<>();
         for (String module : saved) {
             if (isSupportedModule(module)) modules.add(module);
         }
-        return modules;
+        return new HashSet<>(modules);
     }
 
     private static boolean isSupportedModule(Object value) {
