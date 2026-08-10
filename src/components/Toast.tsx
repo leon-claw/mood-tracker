@@ -1,21 +1,8 @@
 import React from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 export type ToastMessage = { type: 'success' | 'error'; message: string } | null;
-
-export const SyncStatusIcon: React.FC<{ isSyncing: boolean }> = ({ isSyncing }) => (
-  <span
-    className={`inline-flex h-5 w-5 shrink-0 items-center justify-center text-[#8FA88B] transition-opacity duration-200 ${
-      isSyncing ? 'opacity-100' : 'opacity-0'
-    }`}
-    role={isSyncing ? 'status' : undefined}
-    aria-label={isSyncing ? '正在同步云端数据' : undefined}
-    aria-hidden={!isSyncing}
-  >
-    <LoaderCircle size={16} strokeWidth={2.4} className={isSyncing ? 'animate-spin' : ''} />
-  </span>
-);
 
 export const GlobalToast: React.FC<{ toast: ToastMessage }> = ({ toast }) => (
   <AnimatePresence mode="wait">

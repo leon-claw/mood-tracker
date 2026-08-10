@@ -3,10 +3,12 @@ import {
   AutoScreenTimeData,
   AutoStepsData,
   AutoWeatherData,
+  ScreenTimeMetric,
 } from './types';
 
 const AUTO_MODULE_KEYS = ['steps', 'weather', 'screenTime'] as const;
 type AutoModuleKey = (typeof AUTO_MODULE_KEYS)[number];
+const SCREEN_TIME_METRICS: ScreenTimeMetric[] = ['screen-interactive', 'foreground-apps'];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -14,6 +16,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const toFiniteNonNegativeNumber = (value: unknown) => {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+};
+
+const toFiniteNumber = (value: unknown) => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
 
 const toNonNegativeInteger = (value: unknown) => {
@@ -56,17 +63,27 @@ const sanitizeWeather = (value: unknown): AutoWeatherData | undefined => {
     return undefined;
   }
 
-  const optionalNumber = (key: 'temperatureC' | 'humidityPercent' | 'precipitationMm') => {
+  const optionalNumber = (key: 'humidityPercent' | 'precipitationMm') => {
     if (value[key] === undefined || value[key] === null || value[key] === '') return undefined;
     return toFiniteNonNegativeNumber(value[key]);
   };
 
-  const temperatureC = value.temperatureC === undefined || value.temperatureC === null || value.temperatureC === ''
-    ? undefined
-    : typeof value.temperatureC === 'number' || typeof value.temperatureC === 'string'
-      ? Number(value.temperatureC)
-      : undefined;
-  if (temperatureC !== undefined && !Number.isFinite(temperatureC)) return undefined;
+  const optionalTemperature = (key: 'temperatureC' | 'temperatureMaxC' | 'temperatureMinC') => {
+    if (value[key] === undefined || value[key] === null || value[key] === '') return undefined;
+    if (typeof value[key] !== 'number' && typeof value[key] !== 'string') return undefined;
+    return toFiniteNumber(value[key]);
+  };
+
+  const temperatureC = optionalTemperature('temperatureC');
+  const temperatureMaxC = optionalTemperature('temperatureMaxC');
+  const temperatureMinC = optionalTemperature('temperatureMinC');
+  if (
+    (value.temperatureC !== undefined && value.temperatureC !== null && value.temperatureC !== '' && temperatureC === undefined) ||
+    (value.temperatureMaxC !== undefined && value.temperatureMaxC !== null && value.temperatureMaxC !== '' && temperatureMaxC === undefined) ||
+    (value.temperatureMinC !== undefined && value.temperatureMinC !== null && value.temperatureMinC !== '' && temperatureMinC === undefined)
+  ) {
+    return undefined;
+  }
 
   const humidity = optionalNumber('humidityPercent');
   const precipitationMm = optionalNumber('precipitationMm');
@@ -80,6 +97,8 @@ const sanitizeWeather = (value: unknown): AutoWeatherData | undefined => {
   return {
     weatherCode,
     ...(temperatureC === undefined ? {} : { temperatureC }),
+    ...(temperatureMaxC === undefined ? {} : { temperatureMaxC }),
+    ...(temperatureMinC === undefined ? {} : { temperatureMinC }),
     ...(humidity === undefined ? {} : { humidityPercent: Math.min(100, humidity) }),
     ...(precipitationMm === undefined ? {} : { precipitationMm }),
     provider: 'open-meteo',
@@ -90,11 +109,18 @@ const sanitizeWeather = (value: unknown): AutoWeatherData | undefined => {
 const sanitizeScreenTime = (value: unknown): AutoScreenTimeData | undefined => {
   if (!isRecord(value)) return undefined;
   const minutes = toNonNegativeInteger(value.minutes);
-  if (minutes === undefined || !isIsoTimestamp(value.collectedAt) || typeof value.isFinal !== 'boolean') {
+  const metric = value.metric === undefined ? 'foreground-apps' : value.metric;
+  if (
+    minutes === undefined ||
+    !SCREEN_TIME_METRICS.includes(metric as ScreenTimeMetric) ||
+    !isIsoTimestamp(value.collectedAt) ||
+    typeof value.isFinal !== 'boolean'
+  ) {
     return undefined;
   }
   return {
     minutes,
+    metric: metric as ScreenTimeMetric,
     collectedAt: value.collectedAt,
     isFinal: value.isFinal,
   };

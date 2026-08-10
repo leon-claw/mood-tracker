@@ -97,6 +97,7 @@ const automaticFields = [
   ['autoWeather', 'weather', 'weather'],
   ['autoScreenTime', 'screenTime', 'duration'],
 ] as const;
+assert.equal(getFieldDefinition('autoScreenTime')?.label, '屏幕活跃时长');
 for (const [fieldId, module, valueType] of automaticFields) {
   const field = getFieldDefinition(fieldId);
   assert.equal(field?.type, 'automatic');

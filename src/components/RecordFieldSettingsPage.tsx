@@ -20,11 +20,9 @@ import {
 import { FIELD_DEFINITIONS } from '../fieldSchema';
 import { FieldDefinition } from '../types';
 import { RecordFieldId } from '../../shared/appPreferences';
-import { SyncStatusIcon } from './SyncFeedback';
 
 interface RecordFieldSettingsPageProps {
   enabledFieldIds: RecordFieldId[];
-  isSyncing: boolean;
   onBack: () => void;
   onToggle: (fieldId: RecordFieldId) => void;
 }
@@ -64,7 +62,6 @@ const getFieldDescription = (field: FieldDefinition) => {
 
 export const RecordFieldSettingsPage: React.FC<RecordFieldSettingsPageProps> = ({
   enabledFieldIds,
-  isSyncing,
   onBack,
   onToggle,
 }) => (
@@ -82,7 +79,6 @@ export const RecordFieldSettingsPage: React.FC<RecordFieldSettingsPageProps> = (
         <div>
           <h2 className="flex items-center gap-2 text-xl font-bold text-[#4A4540]">
             <span>记录模块设置</span>
-            <SyncStatusIcon isSyncing={isSyncing} />
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-gray-400">选择新建和编辑记录时显示的内容</p>
         </div>

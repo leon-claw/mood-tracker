@@ -13,7 +13,6 @@ const androidEnv = {
   ...process.env,
   VITE_CAPACITOR_PLATFORM: 'android',
   VITE_ANDROID_APP_VERSION: process.env.VITE_ANDROID_APP_VERSION || process.env.npm_package_version || packageJson.version,
-  VITE_API_BASE_URL: process.env.VITE_API_BASE_URL || 'https://mood-tracker.jianghong.site/api/',
 };
 
 const run = (command, args, options = {}) => {

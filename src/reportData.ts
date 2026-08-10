@@ -1,5 +1,16 @@
 import { LogEntry } from './types';
-import type { YearlyReportData } from './cloudDataStore';
+
+export interface YearlyMonthSummary {
+  month: number;
+  entryCount: number;
+  averageMood: number | null;
+  averageSleepQuality: number | null;
+}
+
+export interface YearlyReportData {
+  year: number;
+  months: YearlyMonthSummary[];
+}
 
 export const MOOD_BUCKETS = [
   { id: 'low', label: '低落', min: 1, max: 2, color: '#BCAFA4', emoji: '😔' },

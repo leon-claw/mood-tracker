@@ -26,8 +26,8 @@ const getScaleIcon = (fieldId: string) => {
 
 const getAutomaticCardPresentation = (module: AutomaticFieldDefinition['module']) => {
   if (module === 'steps') return { icon: Footprints, helper: '今日累计' };
-  if (module === 'weather') return { icon: CloudSun, helper: '当前位置天气' };
-  return { icon: Smartphone, helper: '今日累计' };
+  if (module === 'weather') return { icon: CloudSun, helper: '今日天气' };
+  return { icon: Smartphone, helper: '今日屏幕活跃' };
 };
 
 const automaticCardClass = 'flex min-h-[88px] items-center gap-3 rounded-3xl border border-[#F2EDE9] bg-white p-4 shadow-xs';
@@ -194,7 +194,9 @@ export const RecordForm: React.FC<RecordFormProps> = ({
                 <div className="mt-1 text-[11px] text-gray-400">{helper}</div>
               </div>
 
-              <div className="shrink-0 text-right font-mono text-base font-bold text-[#4A4540]">
+              <div className={`shrink-0 text-right font-mono font-bold text-[#4A4540] ${
+                field.module === 'weather' ? 'max-w-[150px] text-xs leading-5' : 'text-base'
+              }`}>
                 {formattedValue === '--' ? '尚未采集' : formattedValue}
               </div>
             </div>

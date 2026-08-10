@@ -44,7 +44,7 @@ export const FIELD_DEFINITIONS: FieldDefinition[] = [
   { id: 'achievement', label: '成就', type: 'string', required: false, maxLength: 120 },
   { id: 'autoSteps', label: '全天步数', type: 'automatic', module: 'steps', valueType: 'number', readOnly: true, required: false },
   { id: 'autoWeather', label: '今日天气', type: 'automatic', module: 'weather', valueType: 'weather', readOnly: true, required: false },
-  { id: 'autoScreenTime', label: '全天使用时间', type: 'automatic', module: 'screenTime', valueType: 'duration', readOnly: true, required: false },
+  { id: 'autoScreenTime', label: '屏幕活跃时长', type: 'automatic', module: 'screenTime', valueType: 'duration', readOnly: true, required: false },
 ];
 
 export const getFieldDefinition = (id: string) =>

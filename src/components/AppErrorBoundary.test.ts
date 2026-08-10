@@ -8,7 +8,7 @@ assert.match(mainSource, /<AppErrorBoundary>/);
 assert.match(boundarySource, /getDerivedStateFromError/);
 assert.match(boundarySource, /页面加载遇到问题/);
 assert.match(boundarySource, /重新加载/);
-assert.match(boundarySource, /CLOUD_AUTH_TOKEN_STORAGE_KEY/);
-assert.match(boundarySource, /返回本地模式/);
+assert.equal(boundarySource.includes('CLOUD_AUTH_TOKEN_STORAGE_KEY'), false);
+assert.equal(boundarySource.includes('返回本地模式'), false);
 
 console.log('app error boundary tests passed');

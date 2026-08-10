@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
@@ -11,17 +11,14 @@ import { LogModal } from './components/LogModal';
 import { CalendarMonthView } from './components/CalendarMonthView';
 import { PageTransition } from './components/PageTransition';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { AuthDialog, AuthDialogMode } from './components/AuthDialog';
-import { DataSourceChoiceDialog } from './components/DataSourceChoiceDialog';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { RecordFieldSettingsPage } from './components/RecordFieldSettingsPage';
 import { ReminderSettingsPage } from './components/ReminderSettingsPage';
 import { YearlyReportOverview } from './components/YearlyReportOverview';
 import {
   GlobalToast,
-  SyncStatusIcon,
   ToastMessage,
-} from './components/SyncFeedback';
+} from './components/Toast';
 import {
   AppTab,
   getHashForTab,
@@ -33,28 +30,14 @@ import {
 } from './routes';
 import { getActivityOption } from './fieldSchema';
 import {
-  AppExportData,
   createExportJson,
-  normalizeAppData,
   parseImportJson,
 } from './dataPortability';
 import { createLogEntry } from './logEntry';
 import {
-  clearLocalAppData,
-  hasLocalBusinessData,
   readLocalAppData,
   writeLocalAppData,
 } from './localDataStore';
-import {
-  AuthUser,
-  CloudBootstrapData,
-  CloudChangesPayload,
-  CloudEntryChange,
-  createCloudDataStore,
-  EntryMonthSummary,
-  hasStoredCloudAuthToken,
-  YearlyReportData,
-} from './cloudDataStore';
 import { appConfig } from './appConfig';
 import { formatLocalDate, getCurrentDateContext, YearMonth } from './dateContext';
 import { getAvailableReportMonths, getYearlyReportData } from './reportData';
@@ -91,11 +74,6 @@ import {
   Database,
   Download,
   Upload,
-  Cloud,
-  KeyRound,
-  LogIn,
-  LogOut,
-  UserPlus,
   Smartphone,
   ExternalLink,
   SlidersHorizontal,
@@ -103,103 +81,32 @@ import {
   BellRing,
 } from 'lucide-react';
 
-type DataMode = 'local' | 'cloud';
 const ANDROID_RELEASES_URL = 'https://github.com/leon-claw/mood-tracker/releases';
-export const CLOUD_SYNC_BATCH_DELAY_MS = 10_000;
 
 const formatYearMonth = ({ year, month }: YearMonth) => `${year}年 ${month}月`;
 const formatMonthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}`;
 const getEntryMonthKey = (entry: Pick<LogEntry, 'date'>) => entry.date.slice(0, 7);
 
-const mergeMonthEntries = (current: LogEntry[], year: number, month: number, monthEntries: LogEntry[]) => {
-  const key = formatMonthKey(year, month);
-  return [
-    ...current.filter((entry) => getEntryMonthKey(entry) !== key),
-    ...monthEntries,
-  ].sort((left, right) => left.date.localeCompare(right.date));
-};
-
-const mergeChangedEntries = (current: LogEntry[], changed: LogEntry[]) => {
-  const changedByDate = new Map(changed.map((entry) => [entry.date, entry]));
-  return [
-    ...current.filter((entry) => !changedByDate.has(entry.date)),
-    ...changed,
-  ].sort((left, right) => left.date.localeCompare(right.date));
-};
-
-const getLocalMonthSummaries = (entries: LogEntry[]): EntryMonthSummary[] =>
+const getLocalMonthSummaries = (entries: LogEntry[]) =>
   getAvailableReportMonths(entries).map(({ year, month }) => ({
     year,
     month,
     count: entries.filter((entry) => getEntryMonthKey(entry) === formatMonthKey(year, month)).length,
   }));
 
-interface PendingCloudChanges {
-  entries: CloudEntryChange[];
-  userState?: CloudChangesPayload['userState'];
-  preferences?: AppPreferences;
-}
-
-const createPendingCloudChanges = (): PendingCloudChanges => ({ entries: [] });
-const hasPendingCloudChanges = (changes: PendingCloudChanges) =>
-  changes.entries.length > 0 || changes.userState !== undefined || changes.preferences !== undefined;
-
 const getOptionalNumber = (value: unknown) => typeof value === 'number' ? value : null;
 const formatScaleValue = (value: number | null) => value === null ? '未记录' : `${value}/10`;
-
-const applyAppData = (
-  data: unknown,
-  setters: {
-    setEntries: (entries: LogEntry[]) => void;
-    setPoints: (points: number) => void;
-    setUnlockedItems: (items: string[]) => void;
-    setIsPremiumUnlocked: (value: boolean) => void;
-    setPreferences: (preferences: AppPreferences) => void;
-  }
-) => {
-  const normalized = normalizeAppData(data);
-  setters.setEntries(normalized.entries);
-  setters.setPoints(normalized.points);
-  setters.setUnlockedItems(normalized.unlockedItems);
-  setters.setIsPremiumUnlocked(normalized.isPremiumUnlocked);
-  setters.setPreferences(normalized.preferences);
-};
-
-const applyBootstrapData = (
-  data: CloudBootstrapData,
-  setters: {
-    setPoints: (points: number) => void;
-    setUnlockedItems: (items: string[]) => void;
-    setIsPremiumUnlocked: (value: boolean) => void;
-    setPreferences: (preferences: AppPreferences) => void;
-  }
-) => {
-  setters.setPoints(data.points);
-  setters.setUnlockedItems(data.unlockedItems);
-  setters.setIsPremiumUnlocked(data.isPremiumUnlocked);
-  setters.setPreferences(data.preferences);
-};
 
 export default function App() {
   // 1. State Initialization
   const isNativeMobile = Capacitor.isNativePlatform();
-  const showCloudAccount = appConfig.showCloudAccount;
   const initialLocalData = useMemo(() => readLocalAppData(), []);
   const initialDateContext = useMemo(() => getCurrentDateContext(), []);
-  const hasInitialCloudToken = useMemo(
-    () => showCloudAccount && hasStoredCloudAuthToken(),
-    [showCloudAccount]
-  );
   const [entries, setEntries] = useState<LogEntry[]>(() => initialLocalData.entries);
   const [currentDate, setCurrentDate] = useState(() => initialDateContext.date);
 
   const [activeTab, setActiveTab] = useState<AppTab>(() => getTabFromHash(window.location.hash));
   const [reportRange, setReportRange] = useState<'month' | 'year'>('month');
-  const [dataMode, setDataMode] = useState<DataMode>(() => hasInitialCloudToken ? 'cloud' : 'local');
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [authDialogMode, setAuthDialogMode] = useState<AuthDialogMode | null>(null);
-  const [pendingSourceUser, setPendingSourceUser] = useState<AuthUser | null>(null);
-  const [isSourceChoiceBusy, setIsSourceChoiceBusy] = useState(false);
   const [updateManifest, setUpdateManifest] = useState<UpdateManifest | null>(null);
 
   // Month and Year selector states
@@ -228,41 +135,19 @@ export default function App() {
   // Daily Logging modal state
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage>(null);
-  const [syncRequestCount, setSyncRequestCount] = useState(0);
-  const [loadedMonthKeys, setLoadedMonthKeys] = useState<string[]>(() =>
-    dataMode === 'local' ? getAvailableReportMonths(initialLocalData.entries).map(({ year, month }) => formatMonthKey(year, month)) : []
-  );
-  const [cloudEntryMonths, setCloudEntryMonths] = useState<EntryMonthSummary[]>([]);
-  const [hasLoadedCloudEntryMonths, setHasLoadedCloudEntryMonths] = useState(false);
-  const [yearlyReports, setYearlyReports] = useState<Record<number, YearlyReportData>>({});
-
-  const cloudStore = useMemo(() => createCloudDataStore(fetch, {
-    apiBaseUrl: appConfig.apiBaseUrl,
-    useBearerToken: true,
-    onSyncStart: () => setSyncRequestCount((count) => count + 1),
-    onSyncEnd: () => setSyncRequestCount((count) => Math.max(0, count - 1)),
-    onSyncError: (error) => setToast({ type: 'error', message: error.message }),
-  }), []);
-  const isCloudSyncing = syncRequestCount > 0;
 
   // Search & Filter state for Log history tab
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [selectedMoodFilter, setSelectedMoodFilter] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; closeCalendarEditor?: boolean } | null>(null);
   const calendarTransitionHasMounted = useRef(false);
-  const cloudBatchTimerRef = useRef<number | null>(null);
-  const pendingCloudChangesRef = useRef<PendingCloudChanges>(createPendingCloudChanges());
-  const loadingMonthKeysRef = useRef(new Set<string>());
-  const loadingYearKeysRef = useRef(new Set<number>());
-  const dataModeRef = useRef<DataMode>(dataMode);
-  const appDataRef = useRef<AppExportData>(initialLocalData);
+  const appDataRef = useRef(initialLocalData);
   const preferencesRef = useRef(preferences);
   const autoDataSyncRef = useRef<() => Promise<void>>(async () => undefined);
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Save states to LocalStorage only while the app is in guest/local mode.
+  // All business data is persisted locally.
   useEffect(() => {
-    if (dataMode !== 'local') return;
     writeLocalAppData({
       entries,
       points,
@@ -270,69 +155,13 @@ export default function App() {
       isPremiumUnlocked,
       preferences,
     });
-  }, [dataMode, entries, points, unlockedItems, isPremiumUnlocked, preferences]);
+  }, [entries, points, unlockedItems, isPremiumUnlocked, preferences]);
 
   useEffect(() => {
-    dataModeRef.current = dataMode;
     const currentData = { entries, points, unlockedItems, isPremiumUnlocked, preferences };
     appDataRef.current = currentData;
     preferencesRef.current = preferences;
-  }, [dataMode, entries, points, unlockedItems, isPremiumUnlocked, preferences]);
-
-  useEffect(() => () => {
-    if (cloudBatchTimerRef.current !== null) {
-      window.clearTimeout(cloudBatchTimerRef.current);
-    }
-  }, []);
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    const restoreSession = async () => {
-      if (!showCloudAccount || !hasInitialCloudToken) {
-        return;
-      }
-
-      try {
-        const user = await cloudStore.getMe();
-        if (isCancelled) return;
-        if (!user) {
-          setAuthUser(null);
-          setDataMode('local');
-          return;
-        }
-
-        const [bootstrap, monthEntries] = await Promise.all([
-          cloudStore.getBootstrap(),
-          cloudStore.getEntriesByMonth(initialDateContext.year, initialDateContext.month),
-        ]);
-        if (isCancelled) return;
-        applyBootstrapData(bootstrap, {
-          setPoints,
-          setUnlockedItems,
-          setIsPremiumUnlocked,
-          setPreferences,
-        });
-        setEntries(monthEntries);
-        setLoadedMonthKeys([formatMonthKey(initialDateContext.year, initialDateContext.month)]);
-        clearLocalAppData();
-        setAuthUser(user);
-        setDataMode('cloud');
-      } catch (error) {
-        if (!isCancelled) {
-          setToast({
-            type: 'error',
-            message: error instanceof Error ? error.message : '云端数据拉取失败，请稍后再试。',
-          });
-        }
-      }
-    };
-
-    void restoreSession();
-    return () => {
-      isCancelled = true;
-    };
-  }, [cloudStore, hasInitialCloudToken, initialDateContext.month, initialDateContext.year, showCloudAccount]);
+  }, [entries, points, unlockedItems, isPremiumUnlocked, preferences]);
 
   useEffect(() => {
     let isDisposed = false;
@@ -571,81 +400,6 @@ export default function App() {
     setToast({ type, message });
   };
 
-  const cancelScheduledCloudSync = (discardPendingChanges = false) => {
-    if (cloudBatchTimerRef.current !== null) {
-      window.clearTimeout(cloudBatchTimerRef.current);
-      cloudBatchTimerRef.current = null;
-    }
-    if (discardPendingChanges) {
-      pendingCloudChangesRef.current = createPendingCloudChanges();
-    }
-  };
-
-  const scheduleCloudSync = () => {
-    if (dataModeRef.current !== 'cloud' || cloudBatchTimerRef.current !== null) return;
-
-    cloudBatchTimerRef.current = window.setTimeout(() => {
-      cloudBatchTimerRef.current = null;
-      if (dataModeRef.current !== 'cloud') return;
-
-      const batch = pendingCloudChangesRef.current;
-      pendingCloudChangesRef.current = createPendingCloudChanges();
-      if (!hasPendingCloudChanges(batch)) return;
-
-      void cloudStore.applyChanges(batch).then((result) => {
-        const newerChanges = pendingCloudChangesRef.current;
-        const pendingDates = new Set(newerChanges.entries.map((change) => change.date));
-        const confirmedEntries = result.entries.filter((entry) => !pendingDates.has(entry.date));
-        if (confirmedEntries.length > 0) {
-          const nextEntries = mergeChangedEntries(appDataRef.current.entries, confirmedEntries);
-          appDataRef.current = { ...appDataRef.current, entries: nextEntries };
-          setEntries(nextEntries);
-        }
-        if (result.bootstrap) {
-          if (!newerChanges.userState) {
-            appDataRef.current = {
-              ...appDataRef.current,
-              points: result.bootstrap.points,
-              unlockedItems: result.bootstrap.unlockedItems,
-              isPremiumUnlocked: result.bootstrap.isPremiumUnlocked,
-            };
-            setPoints(result.bootstrap.points);
-            setUnlockedItems(result.bootstrap.unlockedItems);
-            setIsPremiumUnlocked(result.bootstrap.isPremiumUnlocked);
-          }
-          if (!newerChanges.preferences) {
-            preferencesRef.current = result.bootstrap.preferences;
-            appDataRef.current = { ...appDataRef.current, preferences: result.bootstrap.preferences };
-            setPreferences(result.bootstrap.preferences);
-          }
-        }
-      }).catch(() => {
-        const queued = pendingCloudChangesRef.current;
-        const entriesByDate = new Map(batch.entries.map((change) => [change.date, change]));
-        queued.entries.forEach((change) => entriesByDate.set(change.date, change));
-        pendingCloudChangesRef.current = {
-          entries: [...entriesByDate.values()],
-          userState: queued.userState || batch.userState,
-          preferences: queued.preferences || batch.preferences,
-        };
-        scheduleCloudSync();
-      });
-    }, CLOUD_SYNC_BATCH_DELAY_MS);
-  };
-
-  const queueCloudChanges = (changes: CloudChangesPayload) => {
-    if (dataModeRef.current !== 'cloud') return;
-    const pending = pendingCloudChangesRef.current;
-    const entriesByDate = new Map(pending.entries.map((change) => [change.date, change]));
-    changes.entries?.forEach((change) => entriesByDate.set(change.date, change));
-    pendingCloudChangesRef.current = {
-      entries: [...entriesByDate.values()],
-      userState: changes.userState || pending.userState,
-      preferences: changes.preferences || pending.preferences,
-    };
-    scheduleCloudSync();
-  };
-
   const syncAutoData = async () => {
     if (!isNativeMobile) return;
 
@@ -660,7 +414,6 @@ export default function App() {
       pending.entries,
       enabledFieldIds,
     );
-    const currentByDate = new Map(currentData.entries.map((entry) => [entry.date, entry]));
     const changedEntries = [...new Set(pending.entries.map((item) => item.date))]
       .map((date) => nextEntries.find((entry) => entry.date === date))
       .filter((entry): entry is LogEntry => Boolean(entry && entry.autoData));
@@ -668,211 +421,10 @@ export default function App() {
 
     appDataRef.current = { ...currentData, entries: nextEntries };
     setEntries(nextEntries);
-
-    if (dataModeRef.current === 'cloud') {
-      setCloudEntryMonths((current) => {
-        const next = [...current];
-        changedEntries.forEach((entry) => {
-          if (currentByDate.has(entry.date)) return;
-          const year = Number(entry.date.slice(0, 4));
-          const month = Number(entry.date.slice(5, 7));
-          const index = next.findIndex((item) => item.year === year && item.month === month);
-          if (index >= 0) next[index] = { ...next[index], count: next[index].count + 1 };
-          else next.push({ year, month, count: 1 });
-        });
-        return next.sort((left, right) => (right.year * 12 + right.month) - (left.year * 12 + left.month));
-      });
-      queueCloudChanges({
-        entries: changedEntries.map((entry) => ({
-          operation: 'upsert' as const,
-          date: entry.date,
-          values: entry.values,
-          autoData: entry.autoData,
-        })),
-      });
-    }
   };
   autoDataSyncRef.current = syncAutoData;
 
-  const loadCloudMonth = useCallback(async (year: number, month: number, force = false) => {
-    if (dataModeRef.current !== 'cloud') return;
-    const key = formatMonthKey(year, month);
-    if (!force && (loadedMonthKeys.includes(key) || loadingMonthKeysRef.current.has(key))) return;
-    loadingMonthKeysRef.current.add(key);
-    try {
-      const monthEntries = await cloudStore.getEntriesByMonth(year, month);
-      setEntries((current) => mergeMonthEntries(current, year, month, monthEntries));
-      setLoadedMonthKeys((current) => current.includes(key) ? current : [...current, key]);
-    } catch {
-      // The cloud store forwards backend errors to the global toast.
-    } finally {
-      loadingMonthKeysRef.current.delete(key);
-    }
-  }, [cloudStore, loadedMonthKeys]);
-
-  const loadCloudEntryMonths = useCallback(async (force = false) => {
-    if (dataModeRef.current !== 'cloud' || (!force && hasLoadedCloudEntryMonths)) return;
-    try {
-      setCloudEntryMonths(await cloudStore.getEntryMonths());
-      setHasLoadedCloudEntryMonths(true);
-    } catch {
-      // The cloud store forwards backend errors to the global toast.
-    }
-  }, [cloudStore, hasLoadedCloudEntryMonths]);
-
-  const loadCloudYearlyReport = useCallback(async (year: number, force = false) => {
-    if (dataModeRef.current !== 'cloud') return;
-    if ((!force && yearlyReports[year]) || loadingYearKeysRef.current.has(year)) return;
-    loadingYearKeysRef.current.add(year);
-    try {
-      const report = await cloudStore.getYearlyReport(year);
-      setYearlyReports((current) => ({ ...current, [year]: report }));
-    } catch {
-      // The cloud store forwards backend errors to the global toast.
-    } finally {
-      loadingYearKeysRef.current.delete(year);
-    }
-  }, [cloudStore, yearlyReports]);
-
-  const handleAuthenticated = async (user: AuthUser) => {
-    setAuthUser(user);
-    if (hasLocalBusinessData()) {
-      setPendingSourceUser(user);
-      return;
-    }
-
-    try {
-      const current = getCurrentDateContext();
-      const [bootstrap, monthEntries] = await Promise.all([
-        cloudStore.getBootstrap(),
-        cloudStore.getEntriesByMonth(current.year, current.month),
-      ]);
-      applyBootstrapData(bootstrap, {
-        setPoints,
-        setUnlockedItems,
-        setIsPremiumUnlocked,
-        setPreferences,
-      });
-      setEntries(monthEntries);
-      setLoadedMonthKeys([formatMonthKey(current.year, current.month)]);
-      setCloudEntryMonths([]);
-      setHasLoadedCloudEntryMonths(false);
-      setYearlyReports({});
-      clearLocalAppData();
-      setDataMode('cloud');
-      setDataStatus('success', '已进入云端同步模式。');
-    } catch {
-      // The cloud store forwards backend errors to the global toast.
-    }
-  };
-
-  const handleUseLocalData = async () => {
-    setIsSourceChoiceBusy(true);
-    cancelScheduledCloudSync(true);
-    try {
-      const uploaded = await cloudStore.replaceData(readLocalAppData());
-      applyAppData(uploaded, {
-        setEntries,
-        setPoints,
-        setUnlockedItems,
-        setIsPremiumUnlocked,
-        setPreferences,
-      });
-      clearLocalAppData();
-      setDataMode('cloud');
-      setLoadedMonthKeys(getAvailableReportMonths(uploaded.entries).map(({ year, month }) => formatMonthKey(year, month)));
-      setCloudEntryMonths(getLocalMonthSummaries(uploaded.entries));
-      setHasLoadedCloudEntryMonths(true);
-      setYearlyReports({});
-      setPendingSourceUser(null);
-      setDataStatus('success', '本地数据已上传并覆盖云端。');
-    } catch {
-      // The cloud store forwards backend errors to the global toast.
-    } finally {
-      setIsSourceChoiceBusy(false);
-    }
-  };
-
-  const handleUseCloudData = async () => {
-    setIsSourceChoiceBusy(true);
-    cancelScheduledCloudSync(true);
-    try {
-      const current = getCurrentDateContext();
-      const [bootstrap, monthEntries] = await Promise.all([
-        cloudStore.getBootstrap(),
-        cloudStore.getEntriesByMonth(current.year, current.month),
-      ]);
-      applyBootstrapData(bootstrap, {
-        setPoints,
-        setUnlockedItems,
-        setIsPremiumUnlocked,
-        setPreferences,
-      });
-      setEntries(monthEntries);
-      setLoadedMonthKeys([formatMonthKey(current.year, current.month)]);
-      setCloudEntryMonths([]);
-      setHasLoadedCloudEntryMonths(false);
-      setYearlyReports({});
-      clearLocalAppData();
-      setDataMode('cloud');
-      setPendingSourceUser(null);
-      setDataStatus('success', '已使用云端数据，并清空本地记录。');
-    } catch {
-      // The cloud store forwards backend errors to the global toast.
-    } finally {
-      setIsSourceChoiceBusy(false);
-    }
-  };
-
-  const handleCancelSourceChoice = async () => {
-    try {
-      await cloudStore.logout();
-      setAuthUser(null);
-      setPendingSourceUser(null);
-      setDataMode('local');
-      pendingCloudChangesRef.current = createPendingCloudChanges();
-    } catch (error) {
-      setDataStatus('error', error instanceof Error ? error.message : '退出登录失败，请稍后再试。');
-    }
-  };
-
-  const handleLogout = async () => {
-    cancelScheduledCloudSync(true);
-    try {
-      await cloudStore.logout();
-      setAuthUser(null);
-      setDataMode('local');
-      pendingCloudChangesRef.current = createPendingCloudChanges();
-      setLoadedMonthKeys([]);
-      setCloudEntryMonths([]);
-      setHasLoadedCloudEntryMonths(false);
-      setYearlyReports({});
-      clearLocalAppData();
-      const emptyData = readLocalAppData();
-      applyAppData(emptyData, {
-        setEntries,
-        setPoints,
-        setUnlockedItems,
-        setIsPremiumUnlocked,
-        setPreferences,
-      });
-      setDataStatus('success', '已退出登录，当前回到本地模式。');
-    } catch (error) {
-      setDataStatus('error', error instanceof Error ? error.message : '退出登录失败，请稍后再试。');
-    }
-  };
-
-  const invalidateYearlyReportForDate = (date: string) => {
-    const year = Number(date.slice(0, 4));
-    setYearlyReports((current) => {
-      if (!current[year]) return current;
-      const next = { ...current };
-      delete next[year];
-      return next;
-    });
-  };
-
-  // Apply record changes immediately, then let the shared cloud batch persist them.
+  // Apply record changes immediately; the persistence effect writes them locally.
   const handleSaveEntry = (newEntryData: Omit<LogEntry, 'id'>) => {
     const currentData = appDataRef.current;
     const existingEntry = currentData.entries.find((entry) => entry.date === newEntryData.date);
@@ -892,34 +444,7 @@ export default function App() {
       points: nextPoints,
     };
     setEntries(nextEntries);
-    invalidateYearlyReportForDate(optimisticEntry.date);
     if (shouldRewardManualEntry) setPoints(nextPoints);
-    if (!existingEntry) {
-      setCloudEntryMonths((current) => {
-        const year = Number(newEntryData.date.slice(0, 4));
-        const month = Number(newEntryData.date.slice(5, 7));
-        const existingMonth = current.find((item) => item.year === year && item.month === month);
-        const next = existingMonth
-          ? current.map((item) => item === existingMonth ? { ...item, count: item.count + 1 } : item)
-          : [...current, { year, month, count: 1 }];
-        return next.sort((left, right) => (right.year * 12 + right.month) - (left.year * 12 + left.month));
-      });
-    }
-    queueCloudChanges({
-      entries: [{
-        operation: 'upsert',
-        date: optimisticEntry.date,
-        values: optimisticEntry.values,
-        ...(optimisticEntry.autoData ? { autoData: optimisticEntry.autoData } : {}),
-      }],
-      ...(shouldRewardManualEntry ? {
-        userState: {
-          points: nextPoints,
-          unlockedItems: currentData.unlockedItems,
-          isPremiumUnlocked: currentData.isPremiumUnlocked,
-        },
-      } : {}),
-    });
   };
 
   const requestDeleteEntry = (id: string, options?: { closeCalendarEditor?: boolean }) => {
@@ -930,30 +455,17 @@ export default function App() {
     if (!pendingDelete) return;
     const deleteRequest = pendingDelete;
     const currentData = appDataRef.current;
-    const deletedEntry = currentData.entries.find((entry) => entry.id === deleteRequest.id);
     const nextEntries = currentData.entries.filter((entry) => entry.id !== deleteRequest.id);
 
     appDataRef.current = { ...currentData, entries: nextEntries };
     setEntries(nextEntries);
-    if (deletedEntry) invalidateYearlyReportForDate(deletedEntry.date);
     if (deleteRequest.closeCalendarEditor) setCalendarEditorDate(null);
     setPendingDelete(null);
-    if (deletedEntry) {
-      setCloudEntryMonths((current) => current
-        .map((item) => getEntryMonthKey(deletedEntry) === formatMonthKey(item.year, item.month)
-          ? { ...item, count: Math.max(0, item.count - 1) }
-          : item)
-        .filter((item) => item.count > 0));
-      queueCloudChanges({ entries: [{ operation: 'delete', date: deletedEntry.date }] });
-    }
   };
 
   const handleExportData = async () => {
     try {
-      const exportData = dataMode === 'cloud'
-        ? await cloudStore.getExportData()
-        : getCurrentAppData();
-      const json = createExportJson(exportData);
+      const json = createExportJson(getCurrentAppData());
       await exportJsonFile({
         json,
         filename: `mood-tracker-export-${formatLocalDate()}.json`,
@@ -971,20 +483,13 @@ export default function App() {
 
     try {
       const imported = parseImportJson(await file.text());
-      cancelScheduledCloudSync(true);
-      const nextData = dataMode === 'cloud' ? await cloudStore.replaceData(imported) : imported;
-      applyAppData(nextData, {
-        setEntries,
-        setPoints,
-        setUnlockedItems,
-        setIsPremiumUnlocked,
-        setPreferences,
-      });
-      const importedMonths = getLocalMonthSummaries(nextData.entries);
-      setLoadedMonthKeys(importedMonths.map(({ year, month }) => formatMonthKey(year, month)));
-      setCloudEntryMonths(dataMode === 'cloud' ? importedMonths : []);
-      setHasLoadedCloudEntryMonths(dataMode === 'cloud');
-      setYearlyReports({});
+      setEntries(imported.entries);
+      setPoints(imported.points);
+      setUnlockedItems(imported.unlockedItems);
+      setIsPremiumUnlocked(imported.isPremiumUnlocked);
+      setPreferences(imported.preferences);
+      appDataRef.current = imported;
+      preferencesRef.current = imported.preferences;
       setDataStatus('success', `已导入 ${imported.entries.length} 条记录。`);
     } catch (error) {
       setDataStatus('error', error instanceof Error ? error.message : '导入失败，请检查 JSON 文件。');
@@ -1011,7 +516,6 @@ export default function App() {
       preferences: nextPreferences,
     };
     setPreferences(nextPreferences);
-    queueCloudChanges({ preferences: nextPreferences });
 
     if (!isEnabled && isNativeMobile && getEnabledAutoModules([fieldId]).length > 0) {
       const autoFieldId = fieldId as 'autoSteps' | 'autoWeather' | 'autoScreenTime';
@@ -1040,7 +544,6 @@ export default function App() {
       preferences: nextPreferences,
     };
     setPreferences(nextPreferences);
-    queueCloudChanges({ preferences: nextPreferences });
   };
 
   const handleToggleReminders = async (enabled: boolean) => {
@@ -1126,44 +629,7 @@ export default function App() {
     }));
   };
 
-  const monthSummaries = useMemo(
-    () => dataMode === 'cloud' ? cloudEntryMonths : getLocalMonthSummaries(entries),
-    [cloudEntryMonths, dataMode, entries]
-  );
-
-  useEffect(() => {
-    if (dataMode !== 'cloud' || !authUser) return;
-    const current = getCurrentDateContext(new Date(`${currentDate}T12:00:00`));
-    void loadCloudMonth(current.year, current.month);
-  }, [authUser, currentDate, dataMode, loadCloudMonth]);
-
-  useEffect(() => {
-    if (dataMode !== 'cloud' || !authUser) return;
-    if (activeTab === 'log' || activeTab === 'report') {
-      void loadCloudEntryMonths();
-    }
-    if (activeTab === 'calendar') {
-      void loadCloudMonth(calendarYear, calendarMonth);
-    }
-    if (activeTab === 'report' && reportRange === 'month') {
-      void loadCloudMonth(selectedYear, selectedMonth);
-    }
-    if (activeTab === 'report' && reportRange === 'year') {
-      void loadCloudYearlyReport(selectedYear);
-    }
-  }, [
-    activeTab,
-    authUser,
-    calendarMonth,
-    calendarYear,
-    dataMode,
-    loadCloudEntryMonths,
-    loadCloudMonth,
-    loadCloudYearlyReport,
-    reportRange,
-    selectedMonth,
-    selectedYear,
-  ]);
+  const monthSummaries = useMemo(() => getLocalMonthSummaries(entries), [entries]);
 
   const todayEntry = useMemo(() => {
     return entries.find((entry) => entry.date === currentDate);
@@ -1192,13 +658,7 @@ export default function App() {
     const years = [...new Set(monthOptions.map((option) => option.year))];
     return years.length > 0 ? years : [selectedYear];
   }, [monthOptions, selectedYear]);
-  const totalEntryCount = monthSummaries.reduce((total, month) => total + month.count, 0);
-  const nextUnloadedMonth = dataMode === 'cloud'
-    ? monthSummaries.find((month) => !loadedMonthKeys.includes(formatMonthKey(month.year, month.month)))
-    : undefined;
-  const yearlyReport = dataMode === 'cloud'
-    ? yearlyReports[selectedYear] || getYearlyReportData([], selectedYear)
-    : getYearlyReportData(entries, selectedYear);
+  const yearlyReport = getYearlyReportData(entries, selectedYear);
 
   return (
     <div id="app-viewport-wrapper" className="h-dvh overflow-hidden bg-[#EAE7E2] flex items-center justify-center p-0 sm:pt-6 sm:pb-0 md:pt-10">
@@ -1226,10 +686,9 @@ export default function App() {
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-2xl font-bold text-[#4A4540] flex items-center gap-2">
                   <span>打卡日志</span>
-                  <SyncStatusIcon isSyncing={isCloudSyncing} />
                 </h2>
                 <span className="text-xs bg-[#E6F0E6] text-[#8FA88B] font-semibold px-2.5 py-1 rounded-full">
-                  共 {dataMode === 'cloud' && hasLoadedCloudEntryMonths ? totalEntryCount : entries.length} 篇
+                  共 {entries.length} 篇
                 </span>
               </div>
 
@@ -1373,23 +832,12 @@ export default function App() {
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <span className="text-4xl mb-2">🌿</span>
                     <h3 className="font-semibold text-gray-600">
-                      {nextUnloadedMonth ? '当前月份还没有记录' : '还没有任何打卡记录'}
+                      还没有任何打卡记录
                     </h3>
                     <p className="text-xs text-gray-400 mt-1 max-w-[210px]">
-                      {nextUnloadedMonth ? '可以继续加载更早月份，或记录今天的状态。' : '点击下方中间的绿色按钮，记录下你的第一篇心情吧！'}
+                      点击下方中间的绿色按钮，记录下你的第一篇心情吧！
                     </p>
                   </div>
-                )}
-
-                {nextUnloadedMonth && (
-                  <button
-                    type="button"
-                    onClick={() => void loadCloudMonth(nextUnloadedMonth.year, nextUnloadedMonth.month)}
-                    className="mx-auto mt-1 flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#D8E7D6] bg-white px-5 text-xs font-bold text-[#6E876B] shadow-xs transition-all hover:bg-[#E6F0E6]/50 active:scale-95"
-                  >
-                    <ChevronDown size={14} />
-                    加载 {nextUnloadedMonth.year}年{nextUnloadedMonth.month}月
-                  </button>
                 )}
               </div>
             </div>
@@ -1402,7 +850,6 @@ export default function App() {
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-2xl font-bold text-[#4A4540] flex items-center gap-2">
                   <span>报告</span>
-                  <SyncStatusIcon isSyncing={isCloudSyncing} />
                 </h2>
                 
                 {/* Custom Month/Year toggle tabs */}
@@ -1523,7 +970,6 @@ export default function App() {
                   setCalendarEditorDate(date);
                   setIsLogModalOpen(true);
                 }}
-                isSyncing={isCloudSyncing}
               />
             </PageTransition>
           )}
@@ -1537,77 +983,26 @@ export default function App() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-[#4A4540]">打卡小助手</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">{authUser?.email || '本地模式'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">本地存储</p>
                 </div>
               </div>
 
-              {/* Account and cloud sync controls */}
-              {showCloudAccount && (
-                <div className="bg-white border border-[#F2EDE9] rounded-3xl p-5 shadow-xs flex flex-col gap-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-[#4A4540] text-sm flex items-center gap-1.5">
-                        <Cloud size={16} className="text-[#8FA88B]" />
-                        <span>账号与云端同步</span>
-                      </h3>
-                      <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                        {dataMode === 'cloud'
-                          ? '当前数据已保存在云端数据库，本地浏览器不再保留业务数据。'
-                          : '未登录时默认使用 localStorage，本地离线记录不会强制上传。'}
-                      </p>
-                    </div>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${
-                        dataMode === 'cloud'
-                          ? 'bg-[#E6F0E6] text-[#8FA88B]'
-                          : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      {dataMode === 'cloud' ? '云端同步' : '本地模式'}
-                    </span>
+              <div className="bg-white border border-[#F2EDE9] rounded-3xl p-5 shadow-xs flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-[#4A4540] text-sm flex items-center gap-1.5">
+                      <Smartphone size={16} className="text-[#8FA88B]" />
+                      <span>本地存储</span>
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                      记录、偏好和设备数据只保存在当前设备，建议定期导出 JSON 备份。
+                    </p>
                   </div>
-
-                  {authUser ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setAuthDialogMode('password')}
-                        className="h-11 rounded-full bg-gray-50 hover:bg-[#E6F0E6]/50 border border-[#F2EDE9] text-[#4A4540] text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                      >
-                        <KeyRound size={15} className="text-[#8FA88B]" />
-                        <span>修改密码</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="h-11 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                      >
-                        <LogOut size={15} />
-                        <span>退出登录</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setAuthDialogMode('login')}
-                        className="h-11 rounded-full bg-[#8FA88B] hover:bg-[#7D9779] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
-                      >
-                        <LogIn size={15} />
-                        <span>登录</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAuthDialogMode('register')}
-                        className="h-11 rounded-full bg-gray-50 hover:bg-[#E6F0E6]/50 border border-[#F2EDE9] text-[#4A4540] text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                      >
-                        <UserPlus size={15} className="text-[#8FA88B]" />
-                        <span>注册</span>
-                      </button>
-                    </div>
-                  )}
+                  <span className="text-[10px] bg-[#E6F0E6] text-[#8FA88B] font-bold px-2 py-1 rounded-full shrink-0">
+                    离线可用
+                  </span>
                 </div>
-              )}
+              </div>
 
               <div
                 id="profile-settings-group"
@@ -1739,15 +1134,11 @@ export default function App() {
               </div>
 
               <div className="text-[11px] text-gray-400 text-center leading-relaxed px-4">
-                {dataMode === 'cloud' ? (
-                  <span>提示：当前为云端同步模式，记录会保存在后端数据库中。</span>
-                ) : (
-                  <>
-                    <span>提示：打卡数据由本地浏览器离线安全存储（</span>
-                    <span className="font-mono">localStorage</span>
-                    <span>），清除浏览器缓存将重置进度。</span>
-                  </>
-                )}
+                <>
+                  <span>提示：打卡数据由本地浏览器离线安全存储（</span>
+                  <span className="font-mono">localStorage</span>
+                  <span>），清除浏览器缓存将重置进度。</span>
+                </>
               </div>
             </div>
           )}
@@ -1756,7 +1147,6 @@ export default function App() {
             <PageTransition key="record-field-settings">
               <RecordFieldSettingsPage
                 enabledFieldIds={preferences.enabledRecordFieldIds}
-                isSyncing={isCloudSyncing}
                 onBack={() => navigateToTab('profile')}
                 onToggle={handleToggleRecordField}
               />
@@ -1771,7 +1161,6 @@ export default function App() {
                 exactAlarmState={reminderExactAlarmState}
                 isPermissionBusy={isReminderPermissionBusy}
                 isExactAlarmBusy={isReminderExactAlarmBusy}
-                isSyncing={isCloudSyncing}
                 onBack={() => navigateToTab('profile')}
                 onToggle={(enabled) => void handleToggleReminders(enabled)}
                 onRequestExactAlarmPermission={() => void handleRequestReminderExactAlarmPermission()}
@@ -1864,35 +1253,10 @@ export default function App() {
         <ConfirmDialog
           isOpen={Boolean(pendingDelete)}
           title="确认删除"
-          description="这条打卡记录会从当前数据源中移除，删除后无法恢复。"
+          description="这条打卡记录会从本地数据中移除，删除后无法恢复。"
           onCancel={() => setPendingDelete(null)}
           onConfirm={handleConfirmDelete}
         />
-
-        {showCloudAccount && authDialogMode && (
-          <AuthDialog
-            isOpen={Boolean(authDialogMode)}
-            mode={authDialogMode}
-            cloudStore={cloudStore}
-            currentUser={authUser}
-            onModeChange={setAuthDialogMode}
-            onAuthenticated={handleAuthenticated}
-            onPasswordChanged={() => setDataStatus('success', '密码已更新。')}
-            onError={(message) => setDataStatus('error', message)}
-            onClose={() => setAuthDialogMode(null)}
-          />
-        )}
-
-        {showCloudAccount && (
-          <DataSourceChoiceDialog
-            isOpen={Boolean(pendingSourceUser)}
-            email={pendingSourceUser?.email}
-            isBusy={isSourceChoiceBusy}
-            onUseLocal={handleUseLocalData}
-            onUseCloud={handleUseCloudData}
-            onCancel={handleCancelSourceChoice}
-          />
-        )}
 
         <UpdatePrompt
           manifest={updateManifest}

@@ -35,7 +35,7 @@ const autoOnly = mergePendingAutoDataIntoEntries(
   [{
     date: '2026-08-06',
     autoData: {
-      screenTime: { minutes: 42, collectedAt, isFinal: false },
+      screenTime: { minutes: 42, metric: 'screen-interactive', collectedAt, isFinal: false },
     },
   }],
   ['autoScreenTime'],
@@ -43,6 +43,7 @@ const autoOnly = mergePendingAutoDataIntoEntries(
 assert.equal(autoOnly.length, 1);
 assert.equal(autoOnly[0].values.journal, '');
 assert.equal(autoOnly[0].autoData?.screenTime?.minutes, 42);
+assert.equal(autoOnly[0].autoData?.screenTime?.metric, 'screen-interactive');
 assert.equal(hasManualLogValues(autoOnly[0].values), false);
 assert.equal(hasManualLogValues(existing.values), true);
 

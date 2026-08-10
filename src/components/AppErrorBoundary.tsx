@@ -1,6 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, LogOut, RefreshCw } from 'lucide-react';
-import { CLOUD_AUTH_TOKEN_STORAGE_KEY } from '../cloudDataStore';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -22,15 +21,6 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     console.error('Mood Tracker render failed', error, info);
   }
 
-  private returnToLocalMode = () => {
-    try {
-      localStorage.removeItem(CLOUD_AUTH_TOKEN_STORAGE_KEY);
-    } finally {
-      window.location.hash = '#/profile';
-      window.location.reload();
-    }
-  };
-
   render() {
     if (!this.state.hasError) return this.props.children;
 
@@ -42,7 +32,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           </div>
           <h1 className="mt-4 text-lg font-bold">页面加载遇到问题</h1>
           <p className="mt-2 text-xs leading-relaxed text-gray-400">
-            数据没有丢失。请重新加载应用；若问题持续，可以先返回本地模式。
+            数据没有丢失。请重新加载应用后继续使用。
           </p>
           <div className="mt-5 flex flex-col gap-2">
             <button
@@ -52,14 +42,6 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
             >
               <RefreshCw size={15} />
               <span>重新加载</span>
-            </button>
-            <button
-              type="button"
-              onClick={this.returnToLocalMode}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-[#F2EDE9] bg-white text-xs font-bold text-gray-500 transition-all hover:bg-gray-50 active:scale-95"
-            >
-              <LogOut size={15} />
-              <span>返回本地模式</span>
             </button>
           </div>
         </main>

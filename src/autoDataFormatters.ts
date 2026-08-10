@@ -45,8 +45,15 @@ export const formatSteps = (data: AutoStepsData | undefined) =>
 export const formatWeather = (data: AutoWeatherData | undefined) => {
   if (!data) return '--';
   const label = WEATHER_LABELS[data.weatherCode] || '天气';
-  const temperature = data.temperatureC === undefined ? '--' : `${formatNumber(data.temperatureC)}°C`;
-  return `${label} · ${temperature}`;
+  const hasDailyRange = data.temperatureMaxC !== undefined || data.temperatureMinC !== undefined;
+  if (!hasDailyRange) {
+    const temperature = data.temperatureC === undefined ? '--' : `${formatNumber(data.temperatureC)}°C`;
+    return `${label} · ${temperature}`;
+  }
+
+  const maximum = data.temperatureMaxC === undefined ? '--' : `${formatNumber(data.temperatureMaxC)}°C`;
+  const minimum = data.temperatureMinC === undefined ? '--' : `${formatNumber(data.temperatureMinC)}°C`;
+  return `${label} · 最高 ${maximum} / 最低 ${minimum}`;
 };
 
 export const formatScreenTime = (data: AutoScreenTimeData | undefined) => {

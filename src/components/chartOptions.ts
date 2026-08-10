@@ -1,6 +1,5 @@
-import { getMoodFlowData, getSleepMoodData } from '../reportData';
+import { getMoodFlowData, getSleepMoodData, YearlyReportData } from '../reportData';
 import { LogEntry } from '../types';
-import type { YearlyReportData } from '../cloudDataStore';
 
 const gridLineColor = '#eef1ee';
 const axisLabelColor = '#99a399';

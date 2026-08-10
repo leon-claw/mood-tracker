@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class WeatherCollector {
     private static final String PREFERENCES_NAME = "mood_tracker_auto_data";
     private static final String SUCCESS_DATES_KEY = "weather_success_dates";
+    private static final String COLLECTION_VERSION = "v2-daily-range";
 
     private WeatherCollector() {}
 
@@ -88,7 +89,8 @@ public final class WeatherCollector {
             + latitude
             + "&longitude="
             + longitude
-            + "&current=weather_code,temperature_2m,relative_humidity_2m,precipitation&timezone=auto";
+            + "&current=weather_code,temperature_2m,relative_humidity_2m,precipitation"
+            + "&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto";
         HttpURLConnection connection = (HttpURLConnection) new URL(query).openConnection();
         connection.setConnectTimeout(10000);
         connection.setReadTimeout(10000);
@@ -110,17 +112,21 @@ public final class WeatherCollector {
     }
 
     private static boolean hasCollected(Context context, String date) {
-        return readSuccessDates(context).contains(date);
+        return readSuccessDates(context).contains(successKey(date));
     }
 
     private static void markCollected(Context context, String date) {
         Set<String> dates = readSuccessDates(context);
-        dates.add(date);
+        dates.add(successKey(date));
         while (dates.size() > 14) dates.remove(dates.iterator().next());
         context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
             .edit()
             .putStringSet(SUCCESS_DATES_KEY, dates)
             .apply();
+    }
+
+    private static String successKey(String date) {
+        return COLLECTION_VERSION + ":" + date;
     }
 
     private static Set<String> readSuccessDates(Context context) {

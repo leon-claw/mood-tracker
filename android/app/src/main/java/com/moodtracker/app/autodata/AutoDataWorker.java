@@ -54,7 +54,7 @@ public class AutoDataWorker extends Worker {
                 Log.w(LOG_TAG, "Screen-time collection failed", exception);
             }
         }
-        if (enabledModules.contains("autoWeather") && !queue.hasModule(date, "weather")) {
+        if (enabledModules.contains("autoWeather")) {
             try {
                 JSONObject weather = WeatherCollector.collect(context, date);
                 if (weather != null) queue.merge(date, "weather", weather.toString());

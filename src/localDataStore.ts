@@ -9,6 +9,15 @@ export const POINTS_STORAGE_KEY = 'mood_tracker_points';
 export const UNLOCKED_STORAGE_KEY = 'mood_tracker_unlocked';
 export const PREMIUM_STORAGE_KEY = 'mood_tracker_premium';
 export const PREFERENCES_STORAGE_KEY = 'mood_tracker_preferences';
+const LEGACY_CLOUD_TOKEN_STORAGE_KEY = 'mood_tracker_cloud_token';
+
+const clearLegacyCloudCredentials = () => {
+  try {
+    localStorage.removeItem(LEGACY_CLOUD_TOKEN_STORAGE_KEY);
+  } catch {
+    // Ignore storage cleanup failures so local data can still be read.
+  }
+};
 
 const readJsonArray = <Item>(key: string, fallback: Item[]): Item[] => {
   const saved = localStorage.getItem(key);
@@ -49,13 +58,17 @@ const readPreferences = () => {
   }
 };
 
-export const readLocalAppData = (): AppExportData => ({
-  entries: readEntries(),
-  points: Number.parseInt(localStorage.getItem(POINTS_STORAGE_KEY) || '0', 10) || 0,
-  unlockedItems: readJsonArray<string>(UNLOCKED_STORAGE_KEY, []),
-  isPremiumUnlocked: localStorage.getItem(PREMIUM_STORAGE_KEY) === 'true',
-  preferences: readPreferences(),
-});
+export const readLocalAppData = (): AppExportData => {
+  clearLegacyCloudCredentials();
+
+  return {
+    entries: readEntries(),
+    points: Number.parseInt(localStorage.getItem(POINTS_STORAGE_KEY) || '0', 10) || 0,
+    unlockedItems: readJsonArray<string>(UNLOCKED_STORAGE_KEY, []),
+    isPremiumUnlocked: localStorage.getItem(PREMIUM_STORAGE_KEY) === 'true',
+    preferences: readPreferences(),
+  };
+};
 
 export const writeLocalAppData = (data: AppExportData) => {
   localStorage.setItem(ENTRY_STORAGE_KEY, JSON.stringify(normalizeEntries(data.entries)));

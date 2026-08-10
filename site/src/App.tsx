@@ -135,7 +135,7 @@ const Hero = () => (
         </div>
         <div className="hero-note">
           <ShieldCheck size={16} />
-          <span>默认本地保存，云端同步由你决定。</span>
+          <span>无需账号，数据始终保存在当前设备。</span>
         </div>
       </div>
 

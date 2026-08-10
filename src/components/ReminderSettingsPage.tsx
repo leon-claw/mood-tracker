@@ -17,7 +17,6 @@ import {
   ReminderPreferences,
 } from '../../shared/appPreferences';
 import type { ReminderPermissionState } from '../reminderService';
-import { SyncStatusIcon } from './SyncFeedback';
 
 interface ReminderSettingsPageProps {
   reminders: ReminderPreferences;
@@ -25,7 +24,6 @@ interface ReminderSettingsPageProps {
   exactAlarmState: ReminderPermissionState;
   isPermissionBusy: boolean;
   isExactAlarmBusy: boolean;
-  isSyncing: boolean;
   onBack: () => void;
   onToggle: (enabled: boolean) => void;
   onRequestExactAlarmPermission: () => void;
@@ -47,7 +45,6 @@ export const ReminderSettingsPage: React.FC<ReminderSettingsPageProps> = ({
   exactAlarmState,
   isPermissionBusy,
   isExactAlarmBusy,
-  isSyncing,
   onBack,
   onToggle,
   onRequestExactAlarmPermission,
@@ -79,7 +76,6 @@ export const ReminderSettingsPage: React.FC<ReminderSettingsPageProps> = ({
         <div>
           <h2 className="flex items-center gap-2 text-xl font-bold text-[#4A4540]">
             <span>打卡提醒</span>
-            <SyncStatusIcon isSyncing={isSyncing} />
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-gray-400">设置每天提醒记录的时间</p>
         </div>

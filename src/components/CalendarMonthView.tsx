@@ -3,7 +3,6 @@ import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { buildEntriesByDate, buildMonthGrid, getCalendarMonthSummary } from '../calendarData';
 import { LogEntry } from '../types';
 import { PageTransition } from './PageTransition';
-import { SyncStatusIcon } from './SyncFeedback';
 
 interface CalendarMonthViewProps {
   entries: LogEntry[];
@@ -12,7 +11,6 @@ interface CalendarMonthViewProps {
   todayDate: string;
   onMonthChange: (year: number, month: number) => void;
   onSelectDate: (date: string) => void;
-  isSyncing?: boolean;
 }
 
 const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
@@ -32,7 +30,6 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
   todayDate,
   onMonthChange,
   onSelectDate,
-  isSyncing = false,
 }) => {
   const monthGrid = useMemo(
     () => buildMonthGrid(selectedYear, selectedMonth),
@@ -62,7 +59,6 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
           <h2 className="text-2xl font-bold text-[#4A4540] flex items-center gap-2">
             <CalendarDays size={22} className="text-[#8FA88B]" />
             <span>日历</span>
-            <SyncStatusIcon isSyncing={isSyncing} />
           </h2>
           <p className="text-xs text-gray-400 mt-1">按月份回看每一天的心情记录</p>
         </div>

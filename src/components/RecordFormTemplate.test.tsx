@@ -90,6 +90,8 @@ const automaticMarkup = renderToStaticMarkup(
         weather: {
           weatherCode: 0,
           temperatureC: 28,
+          temperatureMaxC: 32,
+          temperatureMinC: 24,
           provider: 'open-meteo',
           collectedAt: '2026-07-07T10:00:00Z',
         },
@@ -101,7 +103,7 @@ const automaticMarkup = renderToStaticMarkup(
   />
 );
 assert.ok(automaticMarkup.includes('6,432 步'));
-assert.ok(automaticMarkup.includes('晴 · 28°C'));
+assert.ok(automaticMarkup.includes('晴 · 最高 32°C / 最低 24°C'));
 assert.ok(automaticMarkup.includes('尚未采集'));
 assert.equal(automaticMarkup.includes('textarea'), false);
 for (const icon of ['lucide-footprints', 'lucide-cloud-sun', 'lucide-smartphone', 'lucide-lock']) {
@@ -119,9 +121,9 @@ const getAutomaticCardMarkup = (module: string) => {
 assert.ok(getAutomaticCardMarkup('steps').includes('lucide-footprints'));
 assert.ok(getAutomaticCardMarkup('steps').includes('今日累计'));
 assert.ok(getAutomaticCardMarkup('weather').includes('lucide-cloud-sun'));
-assert.ok(getAutomaticCardMarkup('weather').includes('当前位置天气'));
+assert.ok(getAutomaticCardMarkup('weather').includes('今日天气'));
 assert.ok(getAutomaticCardMarkup('screenTime').includes('lucide-smartphone'));
-assert.ok(getAutomaticCardMarkup('screenTime').includes('今日累计'));
+assert.ok(getAutomaticCardMarkup('screenTime').includes('今日屏幕活跃'));
 for (const card of ['steps', 'weather', 'screenTime']) {
   assert.ok(getAutomaticCardMarkup(card).includes('自动采集，只读'));
 }

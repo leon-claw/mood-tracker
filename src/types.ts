@@ -4,6 +4,7 @@ export type LogValue = number | string | string[];
 export type LogValues = Record<string, LogValue>;
 
 export type AutoModuleId = 'steps' | 'weather' | 'screenTime';
+export type ScreenTimeMetric = 'screen-interactive' | 'foreground-apps';
 
 export interface AutoStepsData {
   count: number;
@@ -15,6 +16,8 @@ export interface AutoStepsData {
 export interface AutoWeatherData {
   weatherCode: number;
   temperatureC?: number;
+  temperatureMaxC?: number;
+  temperatureMinC?: number;
   humidityPercent?: number;
   precipitationMm?: number;
   provider: 'open-meteo';
@@ -23,6 +26,7 @@ export interface AutoWeatherData {
 
 export interface AutoScreenTimeData {
   minutes: number;
+  metric: ScreenTimeMetric;
   collectedAt: string;
   isFinal: boolean;
 }

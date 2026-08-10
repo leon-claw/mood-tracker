@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { YearlyReportData } from '../cloudDataStore';
+import type { YearlyReportData } from '../reportData';
 import { buildYearlyOverviewOption } from './chartOptions';
 import { EChartView } from './EChartView';
 
