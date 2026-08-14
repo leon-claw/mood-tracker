@@ -14,6 +14,8 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { RecordFieldSettingsPage } from './components/RecordFieldSettingsPage';
 import { ReminderSettingsPage } from './components/ReminderSettingsPage';
+import { AssistantPage } from './components/AssistantPage';
+import { LogHistoryPage } from './components/LogHistoryPage';
 import { YearlyReportOverview } from './components/YearlyReportOverview';
 import {
   GlobalToast,
@@ -23,12 +25,13 @@ import {
   AppTab,
   getHashForTab,
   getTabFromHash,
+  isLogHistoryHash,
   isRecordFieldSettingsHash,
   isReminderSettingsHash,
+  logHistoryRoute,
   recordFieldSettingsRoute,
   reminderSettingsRoute,
 } from './routes';
-import { getActivityOption } from './fieldSchema';
 import {
   createExportJson,
   parseImportJson,
@@ -61,16 +64,12 @@ import {
 } from './reminderService';
 
 import {
-  Calendar,
   BarChart3,
   CalendarDays,
   User,
   Plus,
-  Search,
   ChevronDown,
-  Trash2,
-  Moon,
-  Smile,
+  BookOpen,
   Database,
   Download,
   Upload,
@@ -79,6 +78,7 @@ import {
   SlidersHorizontal,
   ChevronRight,
   BellRing,
+  MessageCircle,
 } from 'lucide-react';
 
 const ANDROID_RELEASES_URL = 'https://github.com/leon-claw/mood-tracker/releases';
@@ -93,9 +93,6 @@ const getLocalMonthSummaries = (entries: LogEntry[]) =>
     month,
     count: entries.filter((entry) => getEntryMonthKey(entry) === formatMonthKey(year, month)).length,
   }));
-
-const getOptionalNumber = (value: unknown) => typeof value === 'number' ? value : null;
-const formatScaleValue = (value: number | null) => value === null ? '未记录' : `${value}/10`;
 
 export default function App() {
   // 1. State Initialization
@@ -127,6 +124,9 @@ export default function App() {
   );
   const [isReminderSettingsOpen, setIsReminderSettingsOpen] = useState(
     () => isNativeMobile && isReminderSettingsHash(window.location.hash)
+  );
+  const [isLogHistoryOpen, setIsLogHistoryOpen] = useState(
+    () => isLogHistoryHash(window.location.hash)
   );
   const [reminderPermissionState, setReminderPermissionState] = useState<ReminderPermissionState>('unknown');
   const [reminderExactAlarmState, setReminderExactAlarmState] = useState<ReminderPermissionState>('unknown');
@@ -234,11 +234,13 @@ export default function App() {
         setActiveTab('profile');
         setIsRecordFieldSettingsOpen(false);
         setIsReminderSettingsOpen(false);
+        setIsLogHistoryOpen(false);
         return;
       }
       setActiveTab(getTabFromHash(window.location.hash));
       setIsRecordFieldSettingsOpen(isRecordFieldSettingsHash(window.location.hash));
       setIsReminderSettingsOpen(isNativeMobile && isReminderSettingsHash(window.location.hash));
+      setIsLogHistoryOpen(isLogHistoryHash(window.location.hash));
     };
 
     handleHashChange();
@@ -316,7 +318,7 @@ export default function App() {
     let listener: PluginListenerHandle | null = null;
     void addCheckInReminderActionListener(() => {
       setCalendarEditorDate(null);
-      window.location.hash = getHashForTab('log');
+      window.location.hash = getHashForTab('assistant');
       setIsLogModalOpen(true);
     }).then((handle) => {
       if (!handle) return;
@@ -386,6 +388,10 @@ export default function App() {
 
   const navigateToReminderSettings = () => {
     if (isNativeMobile) window.location.hash = reminderSettingsRoute;
+  };
+
+  const navigateToLogHistory = () => {
+    window.location.hash = logHistoryRoute;
   };
 
   const getCurrentAppData = () => ({
@@ -640,7 +646,7 @@ export default function App() {
     [entries, calendarEditorDate]
   );
   const disableCalendarInitialAnimation = activeTab === 'calendar' && !calendarTransitionHasMounted.current;
-  const isSecondarySettingsOpen = isRecordFieldSettingsOpen || isReminderSettingsOpen;
+  const isSecondarySettingsOpen = isRecordFieldSettingsOpen || isReminderSettingsOpen || isLogHistoryOpen;
 
   const monthOptions = useMemo(() => {
     const currentYearMonth = getCurrentDateContext(new Date(`${currentDate}T12:00:00`));
@@ -680,167 +686,10 @@ export default function App() {
           }`}
         >
           
-          {/* TAB 1: LOG HISTORY (日历打卡历史) */}
-          {activeTab === 'log' && (
-            <div id="log-view-pane" className="flex flex-col gap-4">
-              <div className="flex justify-between items-center mb-1">
-                <h2 className="text-2xl font-bold text-[#4A4540] flex items-center gap-2">
-                  <span>打卡日志</span>
-                </h2>
-                <span className="text-xs bg-[#E6F0E6] text-[#8FA88B] font-semibold px-2.5 py-1 rounded-full">
-                  共 {entries.length} 篇
-                </span>
-              </div>
-
-              {/* Search & Filter controls */}
-              <div className="bg-white rounded-2xl p-4 border border-[#F2EDE9] shadow-xs flex flex-col gap-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="搜索日志备注内容..."
-                    value={logSearchQuery}
-                    onChange={(e) => setLogSearchQuery(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-100/50 rounded-xl pl-9 pr-4 py-2 text-xs outline-none focus:border-[#8FA88B] focus:bg-white"
-                  />
-                </div>
-
-                {/* Mood Quick Filter row */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  <span className="text-[10px] text-gray-400 font-semibold uppercase shrink-0">心情筛选:</span>
-                  <button
-                    onClick={() => setSelectedMoodFilter(null)}
-                    className={`text-[10px] px-2 py-1 rounded-full font-medium shrink-0 ${
-                      selectedMoodFilter === null
-                        ? 'bg-[#8FA88B] text-white'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >
-                    全部
-                  </button>
-                  {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
-                    <button
-                      key={score}
-                      onClick={() => setSelectedMoodFilter(score)}
-                      className={`text-[10px] px-2 py-1 rounded-full font-medium flex items-center gap-0.5 shrink-0 transition-colors ${
-                        selectedMoodFilter === score
-                          ? 'bg-[#8FA88B] text-white shadow-xs font-semibold'
-                          : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
-                      }`}
-                    >
-                      <span>{score}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Log Cards Timeline */}
-              <div className="flex flex-col gap-3 mt-1">
-                {entries
-                  .filter((e) => {
-                    const journal = typeof e.values.journal === 'string' ? e.values.journal : '';
-                    const moodLevel = getOptionalNumber(e.values.moodLevel);
-                    const matchesSearch = journal.toLowerCase().includes(logSearchQuery.toLowerCase());
-                    const matchesMood = selectedMoodFilter === null || moodLevel === selectedMoodFilter;
-                    return matchesSearch && matchesMood;
-                  })
-                  .sort((a, b) => b.date.localeCompare(a.date))
-                  .map((e) => {
-                    const moodLevel = getOptionalNumber(e.values.moodLevel);
-                    const sleepQuality = getOptionalNumber(e.values.sleepQuality);
-                    const activities = Array.isArray(e.values.activities) ? e.values.activities as string[] : [];
-                    const journal = typeof e.values.journal === 'string' ? e.values.journal : '';
-                    return (
-                      <div
-                        key={e.id}
-                        className="bg-white border border-gray-100/60 rounded-3xl p-5 shadow-xs flex flex-col gap-3 relative hover:shadow-md transition-shadow duration-300"
-                      >
-                        {/* Top row */}
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="text-xs font-bold text-gray-400 font-mono">{e.date}</span>
-                            {moodLevel !== null && (
-                              <div className="flex items-center gap-1.5 mt-1">
-                                <div className="w-7 h-7 rounded-full bg-[#E6F0E6] flex items-center justify-center text-[#8FA88B] shadow-inner">
-                                  <Smile size={15} />
-                                </div>
-                                <span className="text-xs font-semibold text-gray-700">心情 {formatScaleValue(moodLevel)}</span>
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => requestDeleteEntry(e.id)}
-                            className="text-rose-500 bg-rose-50 p-1.5 rounded-full hover:text-rose-600 hover:bg-rose-100 transition-colors"
-                            title="删除记录"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-
-                        {/* Middle metrics row */}
-                        {(sleepQuality !== null || moodLevel !== null) && (
-                          <div
-                            className={`grid ${
-                              sleepQuality !== null && moodLevel !== null ? 'grid-cols-2' : 'grid-cols-1'
-                            } gap-2 bg-gray-50/50 rounded-2xl p-2.5 text-xs text-gray-500`}
-                          >
-                            {sleepQuality !== null && (
-                              <div className="flex items-center gap-1">
-                                <Moon size={12} className="text-indigo-400" />
-                                <span>睡眠质量：<strong className="text-gray-700">{formatScaleValue(sleepQuality)}</strong></span>
-                              </div>
-                            )}
-                            {moodLevel !== null && (
-                              <div className="flex items-center gap-1">
-                                <Smile size={12} className="text-[#8FA88B]" />
-                                <span>心情：<strong className="text-gray-700">{formatScaleValue(moodLevel)}</strong></span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Activities row */}
-                        {activities.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {activities.map((actId) => {
-                              const act = getActivityOption(actId);
-                              if (!act) return null;
-                              return (
-                                <span
-                                  key={actId}
-                                  className="text-[10px] bg-gray-50 text-gray-600 px-2 py-0.5 rounded-md flex items-center gap-0.5 border border-gray-100/30"
-                                >
-                                  <span>{act.emoji}</span>
-                                  <span>{act.label}</span>
-                                </span>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Notes reflection text */}
-                        {journal && (
-                          <p className="text-xs text-gray-600 font-normal leading-relaxed italic border-l-2 border-[#8FA88B] pl-2.5 py-0.5 bg-[#E6F0E6]/20 rounded-r-lg">
-                            &ldquo;{journal}&rdquo;
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                {entries.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <span className="text-4xl mb-2">🌿</span>
-                    <h3 className="font-semibold text-gray-600">
-                      还没有任何打卡记录
-                    </h3>
-                    <p className="text-xs text-gray-400 mt-1 max-w-[210px]">
-                      点击下方中间的绿色按钮，记录下你的第一篇心情吧！
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
+          {activeTab === 'assistant' && (
+            <PageTransition key="assistant">
+              <AssistantPage />
+            </PageTransition>
           )}
 
           {/* TAB 2: REPORTS (可视化报告分析) */}
@@ -1032,6 +881,28 @@ export default function App() {
                   </span>
                 </button>
 
+                <button
+                  type="button"
+                  onClick={navigateToLogHistory}
+                  className="flex min-h-[88px] w-full items-center justify-between gap-4 border-t border-[#F2EDE9] px-5 py-4 text-left transition-colors hover:bg-[#FAF0ED]/35 active:bg-[#FAF0ED]/60"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#FAF0ED] text-[#D48166]">
+                      <BookOpen size={19} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-[#4A4540]">日志历史</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-gray-400">
+                        查看和搜索过去的记录
+                      </span>
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5 text-[#8FA88B]">
+                    <span className="text-[10px] font-bold">{entries.length} 条记录</span>
+                    <ChevronRight size={17} />
+                  </span>
+                </button>
+
                 {isNativeMobile && (
                   <button
                     type="button"
@@ -1143,6 +1014,20 @@ export default function App() {
             </div>
           )}
 
+          {activeTab === 'profile' && isLogHistoryOpen && (
+            <PageTransition key="log-history">
+              <LogHistoryPage
+                entries={entries}
+                searchQuery={logSearchQuery}
+                selectedMoodFilter={selectedMoodFilter}
+                onSearchQueryChange={setLogSearchQuery}
+                onMoodFilterChange={setSelectedMoodFilter}
+                onDelete={(id) => requestDeleteEntry(id)}
+                onBack={() => navigateToTab('profile')}
+              />
+            </PageTransition>
+          )}
+
           {activeTab === 'profile' && isRecordFieldSettingsOpen && (
             <PageTransition key="record-field-settings">
               <RecordFieldSettingsPage
@@ -1175,15 +1060,15 @@ export default function App() {
         {/* BOTTOM TAB NAVIGATION BAR (custom curved central action shape) */}
         {!isSecondarySettingsOpen && (
           <div id="bottom-nav-bar" className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-[#F2EDE9] flex justify-around items-center px-4 z-40 select-none">
-          {/* Tab 1: Log History */}
+          {/* Tab 1: AI Assistant */}
           <button
-            onClick={() => navigateToTab('log')}
+            onClick={() => navigateToTab('assistant')}
             className={`flex flex-col items-center gap-1 cursor-pointer transition-all duration-200 ${
-              activeTab === 'log' ? 'text-[#8FA88B] scale-105' : 'text-gray-400 hover:text-gray-600'
+              activeTab === 'assistant' ? 'text-[#8FA88B] scale-105' : 'text-gray-400 hover:text-gray-600'
             }`}
           >
-            <Calendar size={22} className={activeTab === 'log' ? 'stroke-[2.5px]' : 'stroke-[1.8px]'} />
-            <span className="text-[10px] font-bold">日志</span>
+            <MessageCircle size={22} className={activeTab === 'assistant' ? 'stroke-[2.5px]' : 'stroke-[1.8px]'} />
+            <span className="text-[10px] font-bold">AI</span>
           </button>
 
           {/* Tab 2: Reports */}

@@ -12,9 +12,9 @@ assert.match(cssSource, /@font-face/);
 assert.match(cssSource, /\/fonts\/inter-v20\.woff2/);
 assert.equal(existsSync(fontUrl), true);
 
-assert.match(bottomNavSource, />日志</);
+assert.match(bottomNavSource, />AI</);
 assert.match(bottomNavSource, />趋势</);
-assert.equal(bottomNavSource.includes('>打卡日志</span>'), false);
+assert.equal(bottomNavSource.includes('>日志</span>'), false);
 assert.equal(bottomNavSource.includes('>趋势报告</span>'), false);
 
 console.log('local font and tab name tests passed');
