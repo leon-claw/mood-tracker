@@ -1,5 +1,7 @@
 import React, { FormEvent, useState } from 'react';
 import { MessageCircle, Send, Sparkles } from 'lucide-react';
+import { isLlmConfigured, LlmProfile } from '../../shared/appPreferences';
+import { LlmChatMessage, requestLlmChat } from '../llmClient';
 
 type AssistantMessage = {
   id: string;
@@ -17,54 +19,92 @@ const INITIAL_MESSAGES: AssistantMessage[] = [
   },
 ];
 
-export const AssistantPage: React.FC = () => {
+interface AssistantPageProps {
+  llmSettings: LlmProfile | null;
+}
+
+export const AssistantPage: React.FC<AssistantPageProps> = ({ llmSettings }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<AssistantMessage[]>(INITIAL_MESSAGES);
+  const [isSending, setIsSending] = useState(false);
 
-  const submitMessage = (content: string) => {
+  const llmConfigured = isLlmConfigured(llmSettings);
+
+  const submitMessage = async (content: string) => {
     const trimmed = content.trim();
-    if (!trimmed) return;
+    if (!trimmed || isSending) return;
 
     const messageId = Date.now();
-    setMessages((current) => [
-      ...current,
-      { id: `user-${messageId}`, role: 'user', content: trimmed },
-      {
-        id: `placeholder-${messageId}`,
-        role: 'assistant',
-        content: 'AI 功能接入后会在这里回复。',
-      },
-    ]);
+    const userMessage: AssistantMessage = { id: `user-${messageId}`, role: 'user', content: trimmed };
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
     setInput('');
+
+    if (!llmSettings || !llmConfigured) {
+      setMessages([
+        ...nextMessages,
+        {
+          id: `setup-${messageId}`,
+          role: 'assistant',
+          content: '还没有配置 LLM，请先到“我的”里的 LLM 设置填写服务信息。',
+        },
+      ]);
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const conversation: LlmChatMessage[] = nextMessages.map(({ role, content: messageContent }) => ({
+        role,
+        content: messageContent,
+      }));
+      const response = await requestLlmChat(llmSettings, conversation);
+      setMessages((current) => [
+        ...current,
+        { id: `assistant-${messageId}`, role: 'assistant', content: response },
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '无法连接 LLM，请检查设置后重试。';
+      setMessages((current) => [
+        ...current,
+        { id: `error-${messageId}`, role: 'assistant', content: `连接失败：${message}` },
+      ]);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    submitMessage(input);
+    void submitMessage(input);
   };
 
   return (
-    <div id="assistant-view-pane" className="flex min-h-full flex-col gap-4 pb-4">
-      <section className="rounded-3xl border border-[#F2EDE9] bg-white p-5 shadow-xs">
+    <div id="assistant-view-pane" className="flex h-full min-h-0 flex-col gap-4">
+      <section className="rounded-3xl border border-[#F2EDE9] bg-white p-4 shadow-xs">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#E6F0E6] text-[#8FA88B]">
-            <Sparkles size={21} />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E6F0E6] text-[#8FA88B]">
+            <Sparkles size={18} />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-[#4A4540]">AI 助手</h2>
-              <span className="rounded-full bg-[#E6F0E6] px-2 py-1 text-[10px] font-bold text-[#6E876B]">
-                即将接入
+              <h2 className="text-lg font-bold text-[#4A4540]">AI 助手</h2>
+              <span className="rounded-full bg-[#E6F0E6] px-2 py-0.5 text-[10px] font-bold text-[#6E876B]">
+                {llmConfigured ? '已配置' : '未配置 LLM'}
               </span>
             </div>
-            <p className="mt-1 text-xs leading-relaxed text-gray-400">
+            <p className="mt-0.5 text-[11px] leading-relaxed text-gray-400">
               先从今天的状态开始聊聊
             </p>
           </div>
         </div>
       </section>
 
-      <section className="flex flex-1 flex-col gap-3" aria-live="polite" aria-label="AI 对话内容">
+      <section
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scrollbar-none"
+        aria-live="polite"
+        aria-label="AI 对话内容"
+      >
         <div className="flex flex-wrap gap-2 px-1">
           {QUICK_PROMPTS.map((prompt) => (
             <button
@@ -103,7 +143,7 @@ export const AssistantPage: React.FC = () => {
         </div>
       </section>
 
-      <div className="sticky bottom-0 -mx-1 bg-[#F9F8F6]/95 py-1 backdrop-blur-sm">
+      <div className="shrink-0 -mx-1 bg-[#F9F8F6] py-1">
         <form
           onSubmit={handleSubmit}
           className="rounded-3xl border border-[#F2EDE9] bg-white p-3 shadow-sm"
@@ -114,21 +154,24 @@ export const AssistantPage: React.FC = () => {
               onChange={(event) => setInput(event.target.value)}
               placeholder="和 AI 聊聊今天..."
               rows={2}
-              className="min-h-12 flex-1 resize-none bg-gray-50 px-3 py-2.5 text-xs leading-relaxed text-[#4A4540] outline-none placeholder:text-gray-400 focus:bg-white"
+              disabled={isSending}
+              className="min-h-12 flex-1 resize-none rounded-2xl bg-gray-50 px-3 py-2.5 text-xs leading-relaxed text-[#4A4540] outline-none placeholder:text-gray-400 focus:bg-white"
               aria-label="输入消息"
             />
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || isSending}
               aria-label="发送消息"
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#8FA88B] text-white shadow-md transition-all hover:bg-[#7D9779] active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none"
             >
               <Send size={17} />
             </button>
           </div>
-          <p className="mt-2 px-1 text-[10px] leading-relaxed text-gray-400">
-            当前为界面预览，AI 服务尚未连接。
-          </p>
+          {(!llmConfigured || isSending) && (
+            <p className="mt-2 px-1 text-[10px] leading-relaxed text-gray-400" aria-live="polite">
+              {isSending ? '正在请求 LLM，请稍候…' : '未配置 LLM，配置后即可开始对话。'}
+            </p>
+          )}
         </form>
       </div>
     </div>

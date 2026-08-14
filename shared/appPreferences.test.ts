@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   createDefaultAppPreferences,
+  createDefaultLlmPreferences,
   DEFAULT_REMINDER_TIME,
   MAX_REMINDER_TIMES,
   normalizeAppPreferences,
@@ -11,6 +12,7 @@ const defaults = createDefaultAppPreferences();
 assert.equal(defaults.enabledRecordFieldIds.includes('autoSteps'), false);
 assert.equal(defaults.enabledRecordFieldIds.includes('autoWeather'), false);
 assert.equal(defaults.enabledRecordFieldIds.includes('autoScreenTime'), false);
+assert.deepEqual(defaults.llm, createDefaultLlmPreferences());
 assert.deepEqual(
   FIELD_DEFINITIONS.map((field) => field.id),
   [...new Set([...defaults.enabledRecordFieldIds, 'autoSteps', 'autoWeather', 'autoScreenTime'])]
@@ -22,6 +24,7 @@ assert.deepEqual(
   {
     enabledRecordFieldIds: ['journal'],
     reminders: { enabled: false, times: [DEFAULT_REMINDER_TIME] },
+    llm: createDefaultLlmPreferences(),
   },
   'old preferences should receive the default reminder configuration'
 );
@@ -40,8 +43,49 @@ assert.deepEqual(
       enabled: true,
       times: ['08:00', '09:00', '10:00', '11:00', '12:00'].slice(0, MAX_REMINDER_TIMES),
     },
+    llm: createDefaultLlmPreferences(),
   }
 );
+
+assert.deepEqual(
+  normalizeAppPreferences({
+    llm: {
+      baseUrl: '  http://10.10.56.34:8000/v1/  ',
+      model: '  DeepSeek-V4-Flash  ',
+      apiKey: '  dummy  ',
+    },
+  }).llm,
+  {
+    profiles: [
+      {
+        id: 'legacy-llm',
+        name: 'DeepSeek-V4-Flash',
+        baseUrl: 'http://10.10.56.34:8000/v1',
+        model: 'DeepSeek-V4-Flash',
+        apiKey: 'dummy',
+      },
+    ],
+    activeProfileId: 'legacy-llm',
+  }
+);
+
+const migratedLlm = normalizeAppPreferences({
+  llm: {
+    baseUrl: '  http://10.10.56.34:8000/v1/  ',
+    model: '  DeepSeek-V4-Flash  ',
+    apiKey: '  dummy  ',
+  },
+}).llm;
+assert.equal(migratedLlm.activeProfileId, 'legacy-llm');
+assert.deepEqual(migratedLlm.profiles, [
+  {
+    id: 'legacy-llm',
+    name: 'DeepSeek-V4-Flash',
+    baseUrl: 'http://10.10.56.34:8000/v1',
+    model: 'DeepSeek-V4-Flash',
+    apiKey: 'dummy',
+  },
+]);
 
 assert.deepEqual(
   normalizeAppPreferences({

@@ -2,6 +2,7 @@ export type AppTab = 'assistant' | 'report' | 'calendar' | 'profile';
 
 export const assistantRoute = '#/assistant';
 export const logHistoryRoute = '#/profile/log-history';
+export const llmSettingsRoute = '#/profile/llm-settings';
 
 export const tabRoutes: Record<AppTab, string> = {
   assistant: assistantRoute,
@@ -14,12 +15,14 @@ export const recordFieldSettingsRoute = '#/profile/record-fields';
 export const reminderSettingsRoute = '#/profile/reminders';
 
 export const isLogHistoryHash = (hash: string) => hash === logHistoryRoute;
+export const isLlmSettingsHash = (hash: string) => hash === llmSettingsRoute;
 export const isRecordFieldSettingsHash = (hash: string) => hash === recordFieldSettingsRoute;
 export const isReminderSettingsHash = (hash: string) => hash === reminderSettingsRoute;
 
 export const getTabFromHash = (hash: string): AppTab => {
   if (
     isLogHistoryHash(hash) ||
+    isLlmSettingsHash(hash) ||
     isRecordFieldSettingsHash(hash) ||
     isReminderSettingsHash(hash)
   ) return 'profile';

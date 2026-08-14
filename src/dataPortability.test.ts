@@ -36,6 +36,7 @@ const entries: LogEntry[] = [
 const preferences: AppPreferences = {
   enabledRecordFieldIds: ['sleepQuality', 'moodLevel', 'journal'],
   reminders: { enabled: true, times: ['09:00', '21:00'] },
+  llm: { profiles: [], activeProfileId: null },
 };
 
 const exportedJson = createExportJson({
@@ -129,6 +130,7 @@ assert.deepEqual(
   {
     enabledRecordFieldIds: ['journal'],
     reminders: createDefaultAppPreferences().reminders,
+    llm: createDefaultAppPreferences().llm,
   }
 );
 
@@ -150,6 +152,7 @@ assert.deepEqual(
   {
     enabledRecordFieldIds: ['moodLevel', 'journal'],
     reminders: createDefaultAppPreferences().reminders,
+    llm: createDefaultAppPreferences().llm,
   },
   'old cloud data should receive newly introduced preference defaults'
 );

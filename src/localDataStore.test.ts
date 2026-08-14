@@ -78,6 +78,7 @@ const data: AppExportData = {
   preferences: {
     enabledRecordFieldIds: ['sleepQuality', 'moodLevel', 'journal'],
     reminders: { enabled: true, times: ['08:30', '21:00'] },
+    llm: { profiles: [], activeProfileId: null },
   },
 };
 

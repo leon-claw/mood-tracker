@@ -16,6 +16,7 @@ import { RecordFieldSettingsPage } from './components/RecordFieldSettingsPage';
 import { ReminderSettingsPage } from './components/ReminderSettingsPage';
 import { AssistantPage } from './components/AssistantPage';
 import { LogHistoryPage } from './components/LogHistoryPage';
+import { LlmSettingsPage } from './components/LlmSettingsPage';
 import { YearlyReportOverview } from './components/YearlyReportOverview';
 import {
   GlobalToast,
@@ -24,11 +25,13 @@ import {
 import {
   AppTab,
   getHashForTab,
+  isLlmSettingsHash,
   getTabFromHash,
   isLogHistoryHash,
   isRecordFieldSettingsHash,
   isReminderSettingsHash,
   logHistoryRoute,
+  llmSettingsRoute,
   recordFieldSettingsRoute,
   reminderSettingsRoute,
 } from './routes';
@@ -50,6 +53,8 @@ import { autoDataBridge, getEnabledAutoModules } from './autoDataBridge';
 import { hasManualLogValues, mergePendingAutoDataIntoEntries } from './autoDataService';
 import {
   AppPreferences,
+  getActiveLlmProfile,
+  LlmProfile,
   normalizeAppPreferences,
   RecordFieldId,
 } from '../shared/appPreferences';
@@ -74,6 +79,7 @@ import {
   Download,
   Upload,
   Smartphone,
+  Cpu,
   ExternalLink,
   SlidersHorizontal,
   ChevronRight,
@@ -127,6 +133,9 @@ export default function App() {
   );
   const [isLogHistoryOpen, setIsLogHistoryOpen] = useState(
     () => isLogHistoryHash(window.location.hash)
+  );
+  const [isLlmSettingsOpen, setIsLlmSettingsOpen] = useState(
+    () => isLlmSettingsHash(window.location.hash)
   );
   const [reminderPermissionState, setReminderPermissionState] = useState<ReminderPermissionState>('unknown');
   const [reminderExactAlarmState, setReminderExactAlarmState] = useState<ReminderPermissionState>('unknown');
@@ -235,12 +244,14 @@ export default function App() {
         setIsRecordFieldSettingsOpen(false);
         setIsReminderSettingsOpen(false);
         setIsLogHistoryOpen(false);
+        setIsLlmSettingsOpen(false);
         return;
       }
       setActiveTab(getTabFromHash(window.location.hash));
       setIsRecordFieldSettingsOpen(isRecordFieldSettingsHash(window.location.hash));
       setIsReminderSettingsOpen(isNativeMobile && isReminderSettingsHash(window.location.hash));
       setIsLogHistoryOpen(isLogHistoryHash(window.location.hash));
+      setIsLlmSettingsOpen(isLlmSettingsHash(window.location.hash));
     };
 
     handleHashChange();
@@ -392,6 +403,37 @@ export default function App() {
 
   const navigateToLogHistory = () => {
     window.location.hash = logHistoryRoute;
+  };
+
+  const navigateToLlmSettings = () => {
+    window.location.hash = llmSettingsRoute;
+  };
+
+  const handleSelectLlmProfile = (profileId: string) => {
+    const previousPreferences = preferencesRef.current;
+    if (!previousPreferences.llm.profiles.some((profile) => profile.id === profileId)) return;
+    commitPreferences(normalizeAppPreferences({
+      ...previousPreferences,
+      llm: {
+        ...previousPreferences.llm,
+        activeProfileId: profileId,
+      },
+    }));
+  };
+
+  const handleSaveLlmProfile = (profile: LlmProfile) => {
+    const previousPreferences = preferencesRef.current;
+    const profiles = previousPreferences.llm.profiles.some((item) => item.id === profile.id)
+      ? previousPreferences.llm.profiles.map((item) => item.id === profile.id ? profile : item)
+      : [...previousPreferences.llm.profiles, profile];
+
+    commitPreferences(normalizeAppPreferences({
+      ...previousPreferences,
+      llm: {
+        profiles,
+        activeProfileId: profile.id,
+      },
+    }));
   };
 
   const getCurrentAppData = () => ({
@@ -646,7 +688,9 @@ export default function App() {
     [entries, calendarEditorDate]
   );
   const disableCalendarInitialAnimation = activeTab === 'calendar' && !calendarTransitionHasMounted.current;
-  const isSecondarySettingsOpen = isRecordFieldSettingsOpen || isReminderSettingsOpen || isLogHistoryOpen;
+  const isSecondarySettingsOpen =
+    isRecordFieldSettingsOpen || isReminderSettingsOpen || isLogHistoryOpen || isLlmSettingsOpen;
+  const activeLlmProfile = getActiveLlmProfile(preferences.llm);
 
   const monthOptions = useMemo(() => {
     const currentYearMonth = getCurrentDateContext(new Date(`${currentDate}T12:00:00`));
@@ -681,14 +725,16 @@ export default function App() {
         {/* Scrollable Content Pane */}
         <div
           id="main-scroll-pane"
-          className={`relative flex-1 overflow-y-auto pt-8 px-5 scrollbar-none ${
-            isSecondarySettingsOpen ? 'pb-8' : 'pb-24'
+          className={`relative flex-1 pt-8 px-5 scrollbar-none ${
+            activeTab === 'assistant'
+              ? 'overflow-hidden pb-24'
+              : `overflow-y-auto ${isSecondarySettingsOpen ? 'pb-8' : 'pb-24'}`
           }`}
         >
-          
+
           {activeTab === 'assistant' && (
-            <PageTransition key="assistant">
-              <AssistantPage />
+            <PageTransition key="assistant" className="h-full min-h-0">
+              <AssistantPage llmSettings={activeLlmProfile} />
             </PageTransition>
           )}
 
@@ -700,7 +746,7 @@ export default function App() {
                 <h2 className="text-2xl font-bold text-[#4A4540] flex items-center gap-2">
                   <span>报告</span>
                 </h2>
-                
+
                 {/* Custom Month/Year toggle tabs */}
                 <div className="bg-gray-200/60 p-0.5 rounded-xl flex items-center relative shadow-inner">
                   <button
@@ -883,6 +929,30 @@ export default function App() {
 
                 <button
                   type="button"
+                  onClick={navigateToLlmSettings}
+                  className="flex min-h-[88px] w-full items-center justify-between gap-4 border-t border-[#F2EDE9] px-5 py-4 text-left transition-colors hover:bg-[#E6F0E6]/25 active:bg-[#E6F0E6]/45"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#E6F0E6] text-[#8FA88B]">
+                      <Cpu size={19} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-[#4A4540]">LLM 设置</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-gray-400">
+                        配置 AI 对话使用的模型服务
+                      </span>
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5 text-[#8FA88B]">
+                    <span className="text-[10px] font-bold">
+                      {activeLlmProfile ? activeLlmProfile.name : '未配置'}
+                    </span>
+                    <ChevronRight size={17} />
+                  </span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={navigateToLogHistory}
                   className="flex min-h-[88px] w-full items-center justify-between gap-4 border-t border-[#F2EDE9] px-5 py-4 text-left transition-colors hover:bg-[#FAF0ED]/35 active:bg-[#FAF0ED]/60"
                 >
@@ -1024,6 +1094,17 @@ export default function App() {
                 onMoodFilterChange={setSelectedMoodFilter}
                 onDelete={(id) => requestDeleteEntry(id)}
                 onBack={() => navigateToTab('profile')}
+              />
+            </PageTransition>
+          )}
+
+          {activeTab === 'profile' && isLlmSettingsOpen && (
+            <PageTransition key="llm-settings">
+              <LlmSettingsPage
+                settings={preferences.llm}
+                onBack={() => navigateToTab('profile')}
+                onSave={handleSaveLlmProfile}
+                onSelectProfile={handleSelectLlmProfile}
               />
             </PageTransition>
           )}
